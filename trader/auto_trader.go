@@ -419,6 +419,19 @@ func (at *AutoTrader) runCycle() error {
 		log.Printf("❌ 获取账户信息以保存快照失败: %v", err)
 	}
 
+	// 10. 保存AI决策记录到数据库
+	if err := database.InsertAIDecision(
+		at.id,
+		record.CycleNumber,
+		record.Timestamp,
+		record.InputPrompt,
+		record.CoTTrace,
+		record.DecisionJSON,
+		record.ErrorMessage,
+	); err != nil {
+		log.Printf("❌ 保存AI决策到数据库失败: %v", err)
+	}
+
 	return nil
 }
 

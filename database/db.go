@@ -76,8 +76,22 @@ func createTables() error {
 	);
 	`
 
+	// AI决策记录表
+	aiDecisionsTableSQL := `
+	CREATE TABLE IF NOT EXISTS ai_decisions (
+		decision_id INTEGER PRIMARY KEY AUTOINCREMENT,
+		trader_id TEXT NOT NULL,
+		cycle_number INTEGER NOT NULL,
+		timestamp DATETIME NOT NULL,
+		input_prompt TEXT,
+		cot_trace TEXT,
+		decision_json TEXT,
+		error_message TEXT
+	);
+	`
+
 	// 执行SQL
-	for _, tableSQL := range []string{ordersTableSQL, tradesTableSQL, accountSnapshotsTableSQL} {
+	for _, tableSQL := range []string{ordersTableSQL, tradesTableSQL, accountSnapshotsTableSQL, aiDecisionsTableSQL} {
 		_, err := db.Exec(tableSQL)
 		if err != nil {
 			return err
@@ -85,6 +99,23 @@ func createTables() error {
 	}
 
 	log.Println("✓ 数据库表结构检查/创建完成")
+	return nil
+}
+
+// InsertAIDecision 插入一条AI决策记录
+func InsertAIDecision(traderID string, cycleNumber int, timestamp time.Time, inputPrompt, cotTrace, decisionJSON, errorMessage string) error {
+	query := `INSERT INTO ai_decisions (trader_id, cycle_number, timestamp, input_prompt, cot_trace, decision_json, error_message) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	stmt, err := db.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("准备AI决策插入SQL失败: %w", err)
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(traderID, cycleNumber, timestamp, inputPrompt, cotTrace, decisionJSON, errorMessage)
+	if err != nil {
+		return fmt.Errorf("插入AI决策记录失败: %w", err)
+	}
+
 	return nil
 }
 

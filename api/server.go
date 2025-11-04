@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"nofx/database"
+	"nofx/decision"
 	"nofx/manager"
 
 	"github.com/gin-contrib/cors"
@@ -64,7 +65,7 @@ func (s *Server) setupRoutes() {
 		api.GET("/positions", s.handlePositions)
 		api.GET("/decisions", s.handleDecisions)
 		api.GET("/decisions/latest", s.handleLatestDecisions)
-		api.GET("/statistics", s.handleStatistics)
+
 		api.GET("/equity-history", s.handleEquityHistory)
 		api.GET("/performance", s.handlePerformance)
 
@@ -93,7 +94,7 @@ func (s *Server) handleClosedPositions(c *gin.Context) {
 	}
 
 	// 调用头寸匹配算法
-	closedPositions := manager.MatchPositions(trades)
+	closedPositions := decision.MatchPositions(trades)
 
 	c.JSON(http.StatusOK, closedPositions)
 }
@@ -329,30 +330,6 @@ func (s *Server) handleLatestDecisions(c *gin.Context) {
 	c.JSON(http.StatusOK, records)
 }
 
-// handleStatistics 统计信息
-func (s *Server) handleStatistics(c *gin.Context) {
-	_, traderID, err := s.getTraderFromQuery(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	trader, err := s.traderManager.GetTrader(traderID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-
-	stats, err := trader.GetDecisionLogger().GetStatistics()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("获取统计信息失败: %v", err),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, stats)
-}
 
 // handleEquityHistory 收益率历史数据
 func (s *Server) handleEquityHistory(c *gin.Context) {
@@ -454,9 +431,15 @@ func (s *Server) handlePerformance(c *gin.Context) {
 		return
 	}
 
-	// 分析最近100个周期的交易表现（避免长期持仓的交易记录丢失）
-	// 假设每3分钟一个周期，100个周期 = 5小时，足够覆盖大部分交易
-	performance, err := trader.GetDecisionLogger().AnalyzePerformance(100)
+	records, err := trader.GetDecisionLogger().GetLatestRecords(10000) // Get all records for performance analysis
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("获取决策日志失败: %v", err),
+		})
+		return
+	}
+
+	performance, err := decision.Analyze(traderID, records)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("分析历史表现失败: %v", err),

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"nofx/logger"
 	"nofx/market"
 	"nofx/mcp"
 	"nofx/pool"
@@ -65,7 +64,7 @@ type Context struct {
 	CandidateCoins  []CandidateCoin         `json:"candidate_coins"`
 	MarketDataMap   map[string]*market.Data `json:"-"` // 不序列化，但内部使用
 	OITopDataMap    map[string]*OITopData   `json:"-"` // OI Top数据映射
-	Performance     *logger.PerformanceAnalysis `json:"-"` // 历史表现分析（logger.PerformanceAnalysis）
+	Performance     *PerformanceAnalysis `json:"-"` // 历史表现分析
 	BTCETHLeverage  int                     `json:"-"` // BTC/ETH杠杆倍数（从配置读取）
 	AltcoinLeverage int                     `json:"-"` // 山寨币杠杆倍数（从配置读取）
 }

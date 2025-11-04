@@ -5,6 +5,7 @@ import (
 	"log"
 	"nofx/api"
 	"nofx/config"
+	"nofx/database" // 导入database包
 	"nofx/manager"
 	"nofx/pool"
 	"os"
@@ -29,6 +30,11 @@ func main() {
 	cfg, err := config.LoadConfig(configFile)
 	if err != nil {
 		log.Fatalf("❌ 加载配置失败: %v", err)
+	}
+
+	// 初始化数据库
+	if err := database.InitDB("nofx.db"); err != nil {
+		log.Fatalf("❌ 初始化数据库失败: %v", err)
 	}
 
 	log.Printf("✓ 配置加载成功，共%d个trader参赛", len(cfg.Traders))

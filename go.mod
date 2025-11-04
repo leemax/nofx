@@ -7,6 +7,7 @@ require (
 	github.com/ethereum/go-ethereum v1.16.5
 	github.com/gin-gonic/gin v1.11.0
 	github.com/sonirico/go-hyperliquid v0.17.0
+	github.com/mattn/go-sqlite3 v1.14.17 // indirect
 )
 
 require (

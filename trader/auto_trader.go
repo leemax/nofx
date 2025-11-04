@@ -138,7 +138,7 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 	switch config.Exchange {
 	case "binance":
 		log.Printf("🏦 [%s] 使用币安合约交易", config.Name)
-		trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey)
+		trader = NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, config.ID)
 	case "hyperliquid":
 		log.Printf("🏦 [%s] 使用Hyperliquid交易", config.Name)
 		trader, err = NewHyperliquidTrader(config.HyperliquidPrivateKey, config.HyperliquidWalletAddr, config.HyperliquidTestnet)
@@ -376,6 +376,21 @@ func (at *AutoTrader) runCycle() error {
 	// 8. 保存决策记录
 	if err := at.decisionLogger.LogDecision(record); err != nil {
 		log.Printf("⚠ 保存决策记录失败: %v", err)
+	}
+
+	// 9. 保存账户快照到数据库
+	if accountInfo, err := at.GetAccountInfo(); err == nil {
+		if err := database.InsertAccountSnapshot(
+			at.id,
+			accountInfo["total_equity"].(float64),
+			accountInfo["available_balance"].(float64),
+			accountInfo["total_pnl_pct"].(float64),
+			accountInfo["margin_used_pct"].(float64),
+		); err != nil {
+			log.Printf("❌ 保存账户快照到数据库失败: %v", err)
+		}
+	} else {
+		log.Printf("❌ 获取账户信息以保存快照失败: %v", err)
 	}
 
 	return nil

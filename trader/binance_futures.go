@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"nofx/database"
 	"strconv"
 	"sync"
 	"time"
@@ -13,7 +14,8 @@ import (
 
 // FuturesTrader 币安合约交易器
 type FuturesTrader struct {
-	client *futures.Client
+	client    *futures.Client
+	traderID  string // 用于数据库记录
 
 	// 余额缓存
 	cachedBalance     map[string]interface{}
@@ -30,11 +32,43 @@ type FuturesTrader struct {
 }
 
 // NewFuturesTrader 创建合约交易器
-func NewFuturesTrader(apiKey, secretKey string) *FuturesTrader {
+func NewFuturesTrader(apiKey, secretKey, traderID string) *FuturesTrader {
 	client := futures.NewClient(apiKey, secretKey)
 	return &FuturesTrader{
 		client:        client,
+		traderID:      traderID,
 		cacheDuration: 15 * time.Second, // 15秒缓存
+	}
+}
+
+// processOrderAndTrades 处理订单和成交回报，并写入数据库
+func (t *FuturesTrader) processOrderAndTrades(order *futures.CreateOrderResponse) {
+	if order == nil {
+		return
+	}
+
+	// 插入订单信息
+	price, _ := strconv.ParseFloat(order.Price, 64)
+	quantity, _ := strconv.ParseFloat(order.OrigQuantity, 64)
+	createdAt := time.Unix(0, order.UpdateTime*int64(time.Millisecond))
+
+	if err := database.InsertOrder(order.OrderID, t.traderID, order.Symbol, string(order.Side), string(order.Type), string(order.Status), price, quantity, createdAt); err != nil {
+		log.Printf("❌ 数据库错误：插入订单失败: %v", err)
+	}
+
+	// 如果订单已成交，处理成交信息
+	if order.Status == futures.OrderStatusTypeFilled {
+		for _, fill := range order.Fills {
+			tradePrice, _ := strconv.ParseFloat(fill.Price, 64)
+			tradeQty, _ := strconv.ParseFloat(fill.Quantity, 64)
+			commission, _ := strconv.ParseFloat(fill.Commission, 64)
+			timestamp := time.Unix(0, fill.Time*int64(time.Millisecond))
+
+			if err := database.InsertTrade(fill.TradeID, order.OrderID, t.traderID, order.Symbol, fill.CommissionAsset, tradePrice, tradeQty, commission, fill.Buyer, fill.Maker, timestamp); err != nil {
+				log.Printf("❌ 数据库错误：插入成交失败: %v", err)
+			}
+			log.Printf("💾 数据库：已记录成交 #%d (订单 #%d)，手续费: %f %s", fill.TradeID, order.OrderID, commission, fill.CommissionAsset)
+		}
 	}
 }
 
@@ -238,6 +272,9 @@ func (t *FuturesTrader) OpenLong(symbol string, quantity float64, leverage int) 
 		return nil, fmt.Errorf("开多仓失败: %w", err)
 	}
 
+	// 处理订单和成交数据并写入数据库
+	go t.processOrderAndTrades(order)
+
 	log.Printf("✓ 开多仓成功: %s 数量: %s", symbol, quantityStr)
 	log.Printf("  订单ID: %d", order.OrderID)
 
@@ -283,6 +320,9 @@ func (t *FuturesTrader) OpenShort(symbol string, quantity float64, leverage int)
 	if err != nil {
 		return nil, fmt.Errorf("开空仓失败: %w", err)
 	}
+
+	// 处理订单和成交数据并写入数据库
+	go t.processOrderAndTrades(order)
 
 	log.Printf("✓ 开空仓成功: %s 数量: %s", symbol, quantityStr)
 	log.Printf("  订单ID: %d", order.OrderID)
@@ -333,6 +373,9 @@ func (t *FuturesTrader) CloseLong(symbol string, quantity float64) (map[string]i
 	if err != nil {
 		return nil, fmt.Errorf("平多仓失败: %w", err)
 	}
+
+	// 处理订单和成交数据并写入数据库
+	go t.processOrderAndTrades(order)
 
 	log.Printf("✓ 平多仓成功: %s 数量: %s", symbol, quantityStr)
 
@@ -387,6 +430,9 @@ func (t *FuturesTrader) CloseShort(symbol string, quantity float64) (map[string]
 	if err != nil {
 		return nil, fmt.Errorf("平空仓失败: %w", err)
 	}
+
+	// 处理订单和成交数据并写入数据库
+	go t.processOrderAndTrades(order)
 
 	log.Printf("✓ 平空仓成功: %s 数量: %s", symbol, quantityStr)
 

@@ -47,7 +47,7 @@ func (t *FuturesTrader) processOrderAndTrades(order *futures.CreateOrderResponse
 		return
 	}
 
-	// 插入订单信息
+	// 立即插入或更新订单信息
 	price, _ := strconv.ParseFloat(order.Price, 64)
 	quantity, _ := strconv.ParseFloat(order.OrigQuantity, 64)
 	createdAt := time.Unix(0, order.UpdateTime*int64(time.Millisecond))
@@ -56,18 +56,29 @@ func (t *FuturesTrader) processOrderAndTrades(order *futures.CreateOrderResponse
 		log.Printf("❌ 数据库错误：插入订单失败: %v", err)
 	}
 
-	// 如果订单已成交，处理成交信息
+	// 如果订单立即成交，则查询该订单以获取成交详情（包括手续费）
 	if order.Status == futures.OrderStatusTypeFilled {
-		for _, fill := range order.Fills {
-			tradePrice, _ := strconv.ParseFloat(fill.Price, 64)
-			tradeQty, _ := strconv.ParseFloat(fill.Quantity, 64)
-			commission, _ := strconv.ParseFloat(fill.Commission, 64)
-			timestamp := time.Unix(0, fill.Time*int64(time.Millisecond))
+		// 等待短暂时间，确保成交信息在币安后端可用
+		time.Sleep(1 * time.Second)
 
-			if err := database.InsertTrade(fill.TradeID, order.OrderID, t.traderID, order.Symbol, fill.CommissionAsset, tradePrice, tradeQty, commission, fill.Buyer, fill.Maker, timestamp); err != nil {
+		// 使用ListAccountTradeService获取指定订单的成交记录
+		trades, err := t.client.NewListAccountTradeService().Symbol(order.Symbol).OrderID(order.OrderID).Do(context.Background())
+		if err != nil {
+			log.Printf("❌ API错误：查询订单 #%d 的成交详情失败: %v", order.OrderID, err)
+			return
+		}
+
+		for _, trade := range trades {
+			tradePrice, _ := strconv.ParseFloat(trade.Price, 64)
+			tradeQty, _ := strconv.ParseFloat(trade.Quantity, 64) // 使用正确的Quantity字段
+			commission, _ := strconv.ParseFloat(trade.Commission, 64)
+			timestamp := time.Unix(0, trade.Time*int64(time.Millisecond))
+
+			// 使用正确的字段名：trade.Buyer 和 trade.Maker
+			if err := database.InsertTrade(trade.ID, order.OrderID, t.traderID, trade.Symbol, trade.CommissionAsset, tradePrice, tradeQty, commission, trade.Buyer, trade.Maker, timestamp); err != nil {
 				log.Printf("❌ 数据库错误：插入成交失败: %v", err)
 			}
-			log.Printf("💾 数据库：已记录成交 #%d (订单 #%d)，手续费: %f %s", fill.TradeID, order.OrderID, commission, fill.CommissionAsset)
+			log.Printf("💾 数据库：已记录成交 #%d (订单 #%d)，手续费: %f %s", trade.ID, order.OrderID, commission, trade.CommissionAsset)
 		}
 	}
 }

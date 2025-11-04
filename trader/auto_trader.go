@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"nofx/database"
 	"nofx/decision"
 	"nofx/logger"
 	"nofx/market"

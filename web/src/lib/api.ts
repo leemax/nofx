@@ -10,16 +10,23 @@ import type {
 
 const API_BASE = '/api';
 
+const fetchOptions = {
+  cache: 'no-store' as RequestCache,
+  headers: {
+    'Cache-Control': 'no-cache',
+  },
+};
+
 export const api = {
   // 竞赛相关接口
   async getCompetition(): Promise<CompetitionData> {
-    const res = await fetch(`${API_BASE}/competition`);
+    const res = await fetch(`${API_BASE}/competition`, fetchOptions);
     if (!res.ok) throw new Error('获取竞赛数据失败');
     return res.json();
   },
 
   async getTraders(): Promise<TraderInfo[]> {
-    const res = await fetch(`${API_BASE}/traders`);
+    const res = await fetch(`${API_BASE}/traders`, fetchOptions);
     if (!res.ok) throw new Error('获取trader列表失败');
     return res.json();
   },
@@ -29,7 +36,7 @@ export const api = {
     const url = traderId
       ? `${API_BASE}/status?trader_id=${traderId}`
       : `${API_BASE}/status`;
-    const res = await fetch(url);
+    const res = await fetch(url, fetchOptions);
     if (!res.ok) throw new Error('获取系统状态失败');
     return res.json();
   },
@@ -39,12 +46,7 @@ export const api = {
     const url = traderId
       ? `${API_BASE}/account?trader_id=${traderId}`
       : `${API_BASE}/account`;
-    const res = await fetch(url, {
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache',
-      },
-    });
+    const res = await fetch(url, fetchOptions);
     if (!res.ok) throw new Error('获取账户信息失败');
     const data = await res.json();
     console.log('Account data fetched:', data);
@@ -56,7 +58,7 @@ export const api = {
     const url = traderId
       ? `${API_BASE}/positions?trader_id=${traderId}`
       : `${API_BASE}/positions`;
-    const res = await fetch(url);
+    const res = await fetch(url, fetchOptions);
     if (!res.ok) throw new Error('获取持仓列表失败');
     return res.json();
   },
@@ -66,7 +68,7 @@ export const api = {
     const url = traderId
       ? `${API_BASE}/decisions?trader_id=${traderId}`
       : `${API_BASE}/decisions`;
-    const res = await fetch(url);
+    const res = await fetch(url, fetchOptions);
     if (!res.ok) throw new Error('获取决策日志失败');
     return res.json();
   },
@@ -76,7 +78,7 @@ export const api = {
     const url = traderId
       ? `${API_BASE}/decisions/latest?trader_id=${traderId}`
       : `${API_BASE}/decisions/latest`;
-    const res = await fetch(url);
+    const res = await fetch(url, fetchOptions);
     if (!res.ok) throw new Error('获取最新决策失败');
     return res.json();
   },
@@ -86,7 +88,7 @@ export const api = {
     const url = traderId
       ? `${API_BASE}/statistics?trader_id=${traderId}`
       : `${API_BASE}/statistics`;
-    const res = await fetch(url);
+    const res = await fetch(url, fetchOptions);
     if (!res.ok) throw new Error('获取统计信息失败');
     return res.json();
   },
@@ -96,7 +98,7 @@ export const api = {
     const url = traderId
       ? `${API_BASE}/equity-history?trader_id=${traderId}`
       : `${API_BASE}/equity-history`;
-    const res = await fetch(url);
+    const res = await fetch(url, fetchOptions);
     if (!res.ok) throw new Error('获取历史数据失败');
     return res.json();
   },
@@ -106,7 +108,7 @@ export const api = {
     const url = traderId
       ? `${API_BASE}/performance?trader_id=${traderId}`
       : `${API_BASE}/performance`;
-    const res = await fetch(url);
+    const res = await fetch(url, fetchOptions);
     if (!res.ok) throw new Error('获取AI学习数据失败');
     return res.json();
   },

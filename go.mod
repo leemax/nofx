@@ -5,9 +5,10 @@ go 1.25.0
 require (
 	github.com/adshao/go-binance/v2 v2.8.7
 	github.com/ethereum/go-ethereum v1.16.5
+	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-gonic/gin v1.11.0
+	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/sonirico/go-hyperliquid v0.17.0
-	github.com/mattn/go-sqlite3 v1.14.17 // indirect
 )
 
 require (
@@ -44,7 +45,7 @@ require (
 	github.com/mailru/easyjson v0.9.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

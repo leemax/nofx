@@ -83,6 +83,8 @@ type AutoTrader struct {
 	startTime             time.Time        // 系统启动时间
 	callCount             int              // AI调用次数
 	positionFirstSeenTime map[string]int64 // 持仓首次出现时间 (symbol_side -> timestamp毫秒)
+	positionOpenCycle     map[string]int   // 持仓开仓周期 (symbol_side -> cycle_number)
+	positionStopLoss      map[string]float64 // 持仓初始止损价 (symbol_side -> price)
 }
 
 // NewAutoTrader 创建自动交易器
@@ -177,6 +179,8 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		callCount:             0,
 		isRunning:             false,
 		positionFirstSeenTime: make(map[string]int64),
+		positionOpenCycle:     make(map[string]int),
+		positionStopLoss:      make(map[string]float64),
 	}, nil
 }
 
@@ -287,7 +291,7 @@ func (at *AutoTrader) runCycle() error {
 
 	// 4. 调用AI获取完整决策
 	log.Println("🤖 正在请求AI分析并决策...")
-	decision, err := decision.GetFullDecision(ctx, at.mcpClient)
+	decision, err := decision.GetFullDecision(ctx, at.mcpClient, "", false, "")
 
 	// 即使有错误，也保存思维链、决策和输入prompt（用于debug）
 	if decision != nil {
@@ -600,9 +604,10 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 
 	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", order["orderId"], quantity)
 
-	// 记录开仓时间
+	// 记录开仓周期和止损价，用于冷静期判断
 	posKey := decision.Symbol + "_long"
-	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
+	at.positionOpenCycle[posKey] = at.callCount
+	at.positionStopLoss[posKey] = decision.StopLoss
 
 	// 设置止损止盈
 	if err := at.trader.SetStopLoss(decision.Symbol, "LONG", quantity, decision.StopLoss); err != nil {
@@ -653,9 +658,10 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 
 	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", order["orderId"], quantity)
 
-	// 记录开仓时间
+	// 记录开仓周期和止损价，用于冷静期判断
 	posKey := decision.Symbol + "_short"
-	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
+	at.positionOpenCycle[posKey] = at.callCount
+	at.positionStopLoss[posKey] = decision.StopLoss
 
 	// 设置止损止盈
 	if err := at.trader.SetStopLoss(decision.Symbol, "SHORT", quantity, decision.StopLoss); err != nil {
@@ -671,6 +677,26 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 // executeCloseLongWithRecord 执行平多仓并记录详细信息
 func (at *AutoTrader) executeCloseLongWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
 	log.Printf("  🔄 平多仓: %s", decision.Symbol)
+
+	// 增加持仓冷静期检查
+	posKey := decision.Symbol + "_long"
+	if openCycle, ok := at.positionOpenCycle[posKey]; ok {
+		if at.callCount-openCycle < 3 {
+			// 处于3周期冷静期内，检查止损是否触发
+			initialStopLoss := at.positionStopLoss[posKey]
+			marketData, err := market.Get(decision.Symbol)
+			if err != nil {
+				return fmt.Errorf("冷静期检查失败：无法获取 %s 的市场数据: %w", decision.Symbol, err)
+			}
+
+			// 对于多仓，如果当前价格低于或等于止损价，则允许平仓
+			if marketData.CurrentPrice > initialStopLoss {
+				// 止损未触发，拒绝平仓
+				return fmt.Errorf("❌ %s 处于3周期冷静期内，且止损(%.4f)未触发，拒绝平仓。当前价: %.4f", decision.Symbol, initialStopLoss, marketData.CurrentPrice)
+			}
+			log.Printf("ℹ️ %s 处于冷静期，但止损(%.4f)已触发，允许平仓。当前价: %.4f", decision.Symbol, initialStopLoss, marketData.CurrentPrice)
+		}
+	}
 
 	// 获取当前价格
 	marketData, err := market.Get(decision.Symbol)
@@ -691,12 +717,36 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *decision.Decision, ac
 	}
 
 	log.Printf("  ✓ 平仓成功")
+
+	// 清理仓位记录
+	delete(at.positionOpenCycle, posKey)
+	delete(at.positionStopLoss, posKey)
 	return nil
 }
 
 // executeCloseShortWithRecord 执行平空仓并记录详细信息
 func (at *AutoTrader) executeCloseShortWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
 	log.Printf("  🔄 平空仓: %s", decision.Symbol)
+
+	// 增加持仓冷静期检查
+	posKey := decision.Symbol + "_short"
+	if openCycle, ok := at.positionOpenCycle[posKey]; ok {
+		if at.callCount-openCycle < 3 {
+			// 处于3周期冷静期内，检查止损是否触发
+			initialStopLoss := at.positionStopLoss[posKey]
+			marketData, err := market.Get(decision.Symbol)
+			if err != nil {
+				return fmt.Errorf("冷静期检查失败：无法获取 %s 的市场数据: %w", decision.Symbol, err)
+			}
+
+			// 对于空仓，如果当前价格高于或等于止损价，则允许平仓
+			if marketData.CurrentPrice < initialStopLoss {
+				// 止损未触发，拒绝平仓
+				return fmt.Errorf("❌ %s 处于3周期冷静期内，且止损(%.4f)未触发，拒绝平仓。当前价: %.4f", decision.Symbol, initialStopLoss, marketData.CurrentPrice)
+			}
+			log.Printf("ℹ️ %s 处于冷静期，但止损(%.4f)已触发，允许平仓。当前价: %.4f", decision.Symbol, initialStopLoss, marketData.CurrentPrice)
+		}
+	}
 
 	// 获取当前价格
 	marketData, err := market.Get(decision.Symbol)
@@ -717,6 +767,11 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *decision.Decision, a
 	}
 
 	log.Printf("  ✓ 平仓成功")
+
+	// 清理仓位记录
+	delete(at.positionOpenCycle, posKey)
+	delete(at.positionStopLoss, posKey)
+
 	return nil
 }
 

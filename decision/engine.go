@@ -25,6 +25,7 @@ type PositionInfo struct {
 	LiquidationPrice float64 `json:"liquidation_price"`
 	MarginUsed       float64 `json:"margin_used"`
 	UpdateTime       int64   `json:"update_time"` // 持仓更新时间戳（毫秒）
+	IsExternal       bool    `json:"-"`           // 是否为外部仓位（不序列化）
 }
 
 // AccountInfo 账户信息
@@ -271,8 +272,13 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 		sb.WriteString("    - **移动止损至保本**: 当一笔交易的利润达到您初始风险的1.5倍时（风报比达到1:1.5），您应该**立即准备在下一个周期将止损移动到您的开仓成本价**。这会使之成为一笔“无风险”的交易。\n")
 		sb.WriteString("    - **手动追踪止损**: 对于持续盈利的仓位，在每个决策周期重新评估，并**逐步提高您的“心理止损位”**。例如，一个多头仓位持续上涨，可将新的平仓决策点设在最近的一个小级别支撑位的下方。\n")
 		sb.WriteString("2. **浮亏时 (坚守策略)**:\n")
-		sb.WriteString("    - **坚守初始止损**: 只要没有触及您最初设定的止损价格，就应该**坚决持有**。**不要**因为小的浮亏而恐慌性地提前手动平仓。\n\n")
-	
+						sb.WriteString("    - **坚守初始止损**: 只要没有触及您最初设定的止损价格，就应该**坚决持有**。**不要**因为小的浮亏而恐慌性地提前手动平仓。\n\n")
+		
+				// === 外部仓位处理 ===
+					sb.WriteString("# ⚠️ 外部仓位处理规则\n\n")
+					sb.WriteString("如果你发现一个标记为 `(外部持仓，请评估)` 的仓位，这表示它是在本系统启动前就存在的。\n")
+					sb.WriteString("**在第一个决策周期，你的首要任务是为它设定一个合理的“心理”止损和止盈，而不是立即平仓**，除非它已处于严重亏损状态。\n")
+					sb.WriteString("请基于当前市场数据对其进行评估，输出一个 `hold` 决策，并在你的思考链中明确你为它设定的管理策略（止损/止盈），以便在后续周期中接管并管理它。\n\n")	
 		// === 做空激励 ===
 		sb.WriteString("# 📉 做多做空平衡\n\n")
 		sb.WriteString("**重要**: 下跌趋势做空的利润 = 上涨趋势做多的利润\n\n")
@@ -399,10 +405,15 @@ func buildUserPrompt(ctx *Context) string {
 				}
 			}
 
-			sb.WriteString(fmt.Sprintf("%d. %s %s | 入场价%.4f 当前价%.4f | 盈亏%+.2f%% | 杠杆%dx | 保证金%.0f | 强平价%.4f%s\n\n",
+			externalTag := ""
+			if pos.IsExternal {
+				externalTag = " (外部持仓，请评估)"
+			}
+
+			sb.WriteString(fmt.Sprintf("%d. %s %s | 入场价%.4f 当前价%.4f | 盈亏%+.2f%% | 杠杆%dx | 保证金%.0f | 强平价%.4f%s%s\n\n",
 				i+1, pos.Symbol, strings.ToUpper(pos.Side),
 				pos.EntryPrice, pos.MarkPrice, pos.UnrealizedPnLPct,
-				pos.Leverage, pos.MarginUsed, pos.LiquidationPrice, holdingDuration))
+				pos.Leverage, pos.MarginUsed, pos.LiquidationPrice, holdingDuration, externalTag))
 
 			// 使用FormatMarketData输出完整市场数据
 			if marketData, ok := ctx.MarketDataMap[pos.Symbol]; ok {

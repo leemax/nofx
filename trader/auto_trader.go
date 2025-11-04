@@ -471,6 +471,9 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		}
 		updateTime := at.positionFirstSeenTime[posKey]
 
+		// 检查是否为外部仓位（即，不在内部开仓记录中）
+		_, isInternal := at.positionOpenCycle[posKey]
+
 		positionInfos = append(positionInfos, decision.PositionInfo{
 			Symbol:           symbol,
 			Side:             side,
@@ -483,6 +486,7 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 			LiquidationPrice: liquidationPrice,
 			MarginUsed:       marginUsed,
 			UpdateTime:       updateTime,
+			IsExternal:       !isInternal, // 如果不在内部记录中，则为外部仓位
 		})
 	}
 

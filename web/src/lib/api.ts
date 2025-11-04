@@ -6,6 +6,8 @@ import type {
   Statistics,
   TraderInfo,
   CompetitionData,
+  TradeRecord,
+  ClosedPosition,
 } from '../types';
 
 const API_BASE = '/api';
@@ -120,6 +122,16 @@ export const api = {
       : `${API_BASE}/trades`;
     const res = await fetch(url, fetchOptions);
     if (!res.ok) throw new Error('获取交易记录失败');
+    return res.json();
+  },
+
+  // 获取已平仓交易的盈亏分析（支持trader_id）
+  async getClosedPositions(traderId?: string): Promise<ClosedPosition[]> {
+    const url = traderId
+      ? `${API_BASE}/closed-positions?trader_id=${traderId}`
+      : `${API_BASE}/closed-positions`;
+    const res = await fetch(url, fetchOptions);
+    if (!res.ok) throw new Error('获取已平仓交易失败');
     return res.json();
   },
 };

@@ -226,3 +226,25 @@ func GetTrades(traderID string) ([]TradeRecord, error) {
 
 	return trades, nil
 }
+
+// GetTradesByTraderID 从trades表中获取指定traderID的交易记录，并按时间升序排序
+func GetTradesByTraderID(traderID string) ([]TradeRecord, error) {
+	query := `SELECT trade_id, order_id, trader_id, symbol, price, quantity, commission, commission_asset, is_buyer, is_maker, timestamp FROM trades WHERE trader_id = ? ORDER BY timestamp ASC`
+	rows, err := db.Query(query, traderID)
+	if err != nil {
+		return nil, fmt.Errorf("查询交易记录失败: %w", err)
+	}
+	defer rows.Close()
+
+	var trades []TradeRecord
+	for rows.Next() {
+		var trade TradeRecord
+		if err := rows.Scan(&trade.TradeID, &trade.OrderID, &trade.TraderID, &trade.Symbol, &trade.Price, &trade.Quantity, &trade.Commission, &trade.CommissionAsset, &trade.IsBuyer, &trade.IsMaker, &trade.Timestamp); err != nil {
+			log.Printf("❌ 扫描交易记录失败: %v", err)
+			continue
+		}
+		trades = append(trades, trade)
+	}
+
+	return trades, nil
+}

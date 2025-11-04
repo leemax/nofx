@@ -65,6 +65,19 @@ export interface TradeRecord {
   timestamp: string; // ISO 8601 date string
 }
 
+// 已平仓头寸的盈亏分析
+export interface ClosedPosition {
+  symbol: string;
+  open_time: string;
+  close_time: string;
+  duration: string;
+  total_quantity: number;
+  avg_open_price: number;
+  avg_close_price: number;
+  total_fees: number;
+  net_profit: number;
+}
+
 // 决策记录
 export interface DecisionRecord {
   timestamp: string;

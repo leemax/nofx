@@ -2,7 +2,8 @@ import useSWR from 'swr';
 import { useLanguage } from '../contexts/LanguageContext';
 import { t } from '../i18n/translations';
 import { api } from '../lib/api';
-import { TradeRecord } from '../types'; // 导入TradeRecord类型
+import { ClosedPosition } from '../types'; // 导入ClosedPosition类型
+import { logger } from '../utils/logger';
 
 interface TradeOutcome {
   symbol: string;
@@ -52,9 +53,19 @@ interface AILearningProps {
 
 export default function AILearning({ traderId }: AILearningProps) {
   const { language } = useLanguage();
+  logger.log('Fetching performance data for trader:', traderId);
   const { data: performance, error } = useSWR<PerformanceAnalysis>(
     traderId ? `performance-${traderId}` : 'performance',
-    () => api.getPerformance(traderId),
+    async () => {
+      try {
+        const res = await api.getPerformance(traderId);
+        logger.log('Successfully fetched performance data:', res);
+        return res;
+      } catch (err) {
+        logger.error('Error fetching performance data:', err);
+        throw err;
+      }
+    },
     {
       refreshInterval: 30000, // 30秒刷新（AI学习分析数据更新频率较低）
       revalidateOnFocus: false,
@@ -62,18 +73,29 @@ export default function AILearning({ traderId }: AILearningProps) {
     }
   );
 
-  // 新增：获取交易记录
-  const { data: trades, error: tradesError } = useSWR<TradeRecord[]>(
-    traderId ? `trades-${traderId}` : 'trades',
-    () => api.getTrades(traderId),
+  // 新增：获取已平仓交易的盈亏分析
+  logger.log('Fetching closed positions for trader:', traderId);
+  const { data: closedPositions, error: closedPositionsError } = useSWR<ClosedPosition[]>(
+    traderId ? `closed-positions-${traderId}` : 'closed-positions',
+    async () => {
+      try {
+        const res = await api.getClosedPositions(traderId);
+        logger.log('Successfully fetched closed positions:', res);
+        return res;
+      } catch (err) {
+        logger.error('Error fetching closed positions:', err);
+        throw err;
+      }
+    },
     {
-      refreshInterval: 15000, // 15秒刷新，与UI数据轮询器频率一致
+      refreshInterval: 15000, // 15秒刷新
       revalidateOnFocus: false,
       dedupingInterval: 10000,
     }
   );
 
-  if (error || tradesError) {
+  if (error || closedPositionsError) {
+    logger.error('Error in AILearning component:', error || closedPositionsError);
     return (
       <div className="rounded p-6" style={{ background: '#1E2329', border: '1px solid #2B3139' }}>
         <div style={{ color: '#F6465D' }}>{t('loadingError', language)}</div>
@@ -81,7 +103,8 @@ export default function AILearning({ traderId }: AILearningProps) {
     );
   }
 
-  if (!performance || !trades) {
+  if (!performance || !closedPositions) {
+    logger.warn('No performance or closed positions data available yet.');
     return (
       <div className="rounded p-6" style={{ background: '#1E2329', border: '1px solid #2B3139' }}>
         <div style={{ color: '#848E9C' }}>📊 {t('loading', language)}</div>
@@ -90,6 +113,7 @@ export default function AILearning({ traderId }: AILearningProps) {
   }
 
   if (!performance || performance.total_trades === 0) {
+    logger.warn('No complete performance data or total trades is 0.');
     return (
       <div className="rounded p-6" style={{ background: '#1E2329', border: '1px solid #2B3139' }}>
         <div className="flex items-center gap-2 mb-2">
@@ -488,7 +512,7 @@ export default function AILearning({ traderId }: AILearningProps) {
           </div>
         )}
 
-        {/* 右侧：历史成交记录 - 使用新的trades数据 */}
+        {/* 右侧：已平仓交易分析 */}
         <div className="rounded-2xl overflow-hidden" style={{
           background: 'rgba(30, 35, 41, 0.4)',
           border: '1px solid rgba(240, 185, 11, 0.2)',
@@ -500,76 +524,68 @@ export default function AILearning({ traderId }: AILearningProps) {
             backdropFilter: 'blur(10px)'
           }}>
             <div className="flex items-center gap-2">
-              <span className="text-2xl">📜</span>
+              <span className="text-2xl">🧾</span>
               <div>
-                <h3 className="font-bold text-lg" style={{ color: '#FCD34D' }}>{t('tradeHistory', language)}</h3>
+                <h3 className="font-bold text-lg" style={{ color: '#FCD34D' }}>{t('closedTrades', language)}</h3>
                 <p className="text-xs" style={{ color: '#94A3B8' }}>
-                  {trades && trades.length > 0
-                    ? t('completedTrades', language, { count: trades.length })
-                    : t('completedTradesWillAppear', language)}
+                  {closedPositions && closedPositions.length > 0
+                    ? t('closedTradesAnalyzed', language, { count: closedPositions.length })
+                    : t('closedTradesWillAppear', language)}
                 </p>
               </div>
             </div>
           </div>
 
           <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-            {trades && trades.length > 0 ? (
+            {closedPositions && closedPositions.length > 0 ? (
               <table className="w-full">
                 <thead className="sticky top-0 z-10">
                   <tr style={{ background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)' }}>
                     <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Symbol</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Type</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Price</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Qty</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Fee</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Time</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Net Profit</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Total Fees</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Duration</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Avg Open</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Avg Close</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Quantity</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {trades.map((trade: TradeRecord) => {
-                    const tradeType = trade.is_buyer ? 'BUY' : 'SELL';
-                    const tradeRole = trade.is_maker ? 'Maker' : 'Taker';
-                    const tradeTime = new Date(trade.timestamp).toLocaleString('en-US', {
-                      month: 'short',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                    });
-
-                    return (
-                      <tr key={trade.trade_id} className="transition-colors hover:bg-white/5" style={{
-                        borderTop: '1px solid rgba(240, 185, 11, 0.1)'
+                  {closedPositions.map((pos: ClosedPosition, index: number) => (
+                    <tr key={index} className="transition-colors hover:bg-white/5" style={{
+                      borderTop: '1px solid rgba(240, 185, 11, 0.1)'
+                    }}>
+                      <td className="px-4 py-3">
+                        <span className="font-bold mono text-sm" style={{ color: '#E0E7FF' }}>{pos.symbol}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right mono text-sm font-bold" style={{
+                        color: pos.net_profit > 0 ? '#10B981' : '#F87171'
                       }}>
-                        <td className="px-4 py-3">
-                          <span className="font-bold mono text-sm" style={{ color: '#E0E7FF' }}>{trade.symbol}</span>
-                        </td>
-                        <td className="px-4 py-3 text-right mono text-sm" style={{
-                          color: trade.is_buyer ? '#10B981' : '#F87171'
-                        }}>
-                          {tradeType}
-                        </td>
-                        <td className="px-4 py-3 text-right mono text-sm" style={{ color: '#CBD5E1' }}>
-                          {trade.price.toFixed(4)}
-                        </td>
-                        <td className="px-4 py-3 text-right mono text-sm" style={{ color: '#CBD5E1' }}>
-                          {trade.quantity.toFixed(4)}
-                        </td>
-                        <td className="px-4 py-3 text-right mono text-sm" style={{ color: '#FCD34D' }}>
-                          {trade.commission.toFixed(6)} {trade.commission_asset}
-                        </td>
-                        <td className="px-4 py-3 text-right text-xs" style={{ color: '#94A3B8' }}>
-                          {tradeTime}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        {pos.net_profit > 0 ? '+' : ''}{pos.net_profit.toFixed(4)}
+                      </td>
+                      <td className="px-4 py-3 text-right mono text-sm" style={{ color: '#FCD34D' }}>
+                        {pos.total_fees.toFixed(6)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-xs" style={{ color: '#94A3B8' }}>
+                        {formatDuration(pos.duration)}
+                      </td>
+                      <td className="px-4 py-3 text-right mono text-sm" style={{ color: '#CBD5E1' }}>
+                        {pos.avg_open_price.toFixed(4)}
+                      </td>
+                      <td className="px-4 py-3 text-right mono text-sm" style={{ color: '#CBD5E1' }}>
+                        {pos.avg_close_price.toFixed(4)}
+                      </td>
+                      <td className="px-4 py-3 text-right mono text-sm" style={{ color: '#CBD5E1' }}>
+                        {pos.total_quantity.toFixed(4)}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             ) : (
               <div className="p-6 text-center">
-                <div className="text-4xl mb-2 opacity-50">📜</div>
-                <div style={{ color: '#94A3B8' }}>{t('noCompletedTrades', language)}</div>
+                <div className="text-4xl mb-2 opacity-50">🧾</div>
+                <div style={{ color: '#94A3B8' }}>{t('noClosedTrades', language)}</div>
               </div>
             )}
           </div>

@@ -70,7 +70,32 @@ func (s *Server) setupRoutes() {
 
 		// 交易记录
 		api.GET("/trades", s.handleTrades)
+		// 新增：已平仓交易的盈亏分析
+		api.GET("/closed-positions", s.handleClosedPositions)
 	}
+}
+
+// handleClosedPositions 处理已平仓交易的请求
+func (s *Server) handleClosedPositions(c *gin.Context) {
+	_, traderID, err := s.getTraderFromQuery(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 从数据库获取所有交易记录，按时间升序
+	trades, err := database.GetTradesByTraderID(traderID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("获取交易记录失败: %v", err),
+		})
+		return
+	}
+
+	// 调用头寸匹配算法
+	closedPositions := manager.MatchPositions(trades)
+
+	c.JSON(http.StatusOK, closedPositions)
 }
 
 // handleTrades 交易记录
@@ -89,7 +114,36 @@ func (s *Server) handleTrades(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, trades)
+		// 聚合交易记录
+	aggregatedTrades := make(map[int64]database.TradeRecord)
+	for _, trade := range trades {
+		if existingTrade, ok := aggregatedTrades[trade.OrderID]; ok {
+			// 如果已经存在该订单的记录，则聚合
+			// 计算加权平均价
+			newQuantity := existingTrade.Quantity + trade.Quantity
+			if newQuantity > 0 {
+				existingTrade.Price = (existingTrade.Price*existingTrade.Quantity + trade.Price*trade.Quantity) / newQuantity
+			}
+			existingTrade.Quantity = newQuantity
+			existingTrade.Commission += trade.Commission
+			// 时间戳更新为最近的成交时间
+			if trade.Timestamp.After(existingTrade.Timestamp) {
+				existingTrade.Timestamp = trade.Timestamp
+			}
+			aggregatedTrades[trade.OrderID] = existingTrade
+		} else {
+			// 否则，直接添加
+			aggregatedTrades[trade.OrderID] = trade
+		}
+	}
+
+	// 将聚合后的map转换为slice
+	var result []database.TradeRecord
+	for _, trade := range aggregatedTrades {
+		result = append(result, trade)
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // handleHealth 健康检查

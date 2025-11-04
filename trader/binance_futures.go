@@ -708,8 +708,8 @@ func (t *FuturesTrader) startUserDataStream() {
 			}
 
 			// 如果订单已成交，处理成交信息
-			if order.Status == futures.OrderStatusTypeFilled {
-				log.Printf("🎉 WEBSOCKET: 订单 #%d 已成交!", order.ID)
+			if order.Status == futures.OrderStatusTypeFilled || order.Status == futures.OrderStatusTypePartiallyFilled {
+				log.Printf("🎉 WEBSOCKET: 订单 #%d 状态更新为 %s，处理成交...", order.ID, order.Status)
 				go t.processFilledOrder(order.ID, order.Symbol)
 			}
 		}

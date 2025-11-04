@@ -16,6 +16,7 @@
 
 ### 🛠️ 工作流与Bug修复
 
+- ✅ **AI模型更新**：将DeepSeek的默认模型从 `deepseek-chat` 更新为 `deepseek-reasoner`，以期获得更强的推理能力。
 - ✅ **工作流文档**：在项目根目录创建了 `WORKFLOW.md`，明确了项目的迭代规范，特别是迭代结束后的 `CHANGELOG.md` 更新和Git提交要求。
 - ✅ **后端编译修复**：修复了多个Go语言的编译错误，包括 `syntax error`, `err redeclared`, 和 `undefined: config`，确保了后端服务的稳定性。
 - ✅ **AI决策解析修复**：通过优化 `Grok.txt` 提示词中的指令，解决了AI返回的JSON格式错误（如 `invalid action`, `invalid confidence`, `invalid JSON format`），提高了决策成功率。

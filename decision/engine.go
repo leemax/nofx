@@ -352,7 +352,6 @@ func buildUserPrompt(ctx *Context) string {
 	}
 
 	sb.WriteString("---\n\n")
-	sb.WriteString("现在请分析并输出决策（思维链 + JSON）\n")
 
 	return sb.String()
 }

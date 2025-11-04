@@ -267,7 +267,19 @@ function App() {
               {currentPage === 'trader' && prompts && prompts.length > 0 && (
                 <select
                   value={selectedPromptId}
-                  onChange={(e) => setSelectedPromptId(e.target.value)}
+                  onChange={async (e) => {
+                    const newPromptId = e.target.value;
+                    setSelectedPromptId(newPromptId);
+                    if (selectedTraderId) {
+                      try {
+                        await api.setTraderPrompt(selectedTraderId, newPromptId);
+                        // Optional: show a success notification
+                      } catch (error) {
+                        console.error("Failed to set trader prompt:", error);
+                        // Optional: show an error notification
+                      }
+                    }
+                  }}
                   className="rounded px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium cursor-pointer transition-colors flex-1 sm:flex-initial min-w-48"
                   style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
                 >
@@ -301,7 +313,7 @@ function App() {
                 <button
                   onClick={async () => {
                     if (selectedTraderId) {
-                      await api.forceDecision(selectedTraderId, selectedPromptId || '');
+                      await api.forceDecision(selectedTraderId);
                       alert('Decision triggered!');
                     }
                   }}

@@ -81,5 +81,5 @@
   "max_daily_loss": 10.0,
   "max_drawdown": 20.0,
   "stop_trading_minutes": 60,
-  "default_prompt": "default"
+  "default_prompt": "Grok"
 }

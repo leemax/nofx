@@ -143,13 +143,27 @@ export const api = {
   },
 
   // 手动触发决策
-  async forceDecision(traderId: string, promptName: string): Promise<any> {
-    const url = `${API_BASE}/force-decision?trader_id=${traderId}&prompt_name=${promptName}`;
+  async forceDecision(traderId: string): Promise<any> {
+    const url = `${API_BASE}/force-decision?trader_id=${traderId}`;
     const res = await fetch(url, {
       method: 'POST',
       ...fetchOptions,
     });
     if (!res.ok) throw new Error('手动触发决策失败');
+    return res.json();
+  },
+
+  // 设置trader的默认提示词
+  async setTraderPrompt(traderId: string, promptName: string): Promise<any> {
+    const url = `${API_BASE}/trader/prompt`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ trader_id: traderId, prompt_name: promptName }),
+    });
+    if (!res.ok) throw new Error('设置默认提示词失败');
     return res.json();
   },
 };

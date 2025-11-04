@@ -171,3 +171,14 @@ func (tm *TraderManager) GetComparisonData() (map[string]interface{}, error) {
 
 	return comparison, nil
 }
+
+// SetTraderPrompt sets the prompt name for a specific trader.
+func (tm *TraderManager) SetTraderPrompt(traderID, promptName string) error {
+	trader, err := tm.GetTrader(traderID)
+	if err != nil {
+		return err
+	}
+	trader.SetPromptName(promptName)
+	log.Printf("✓ Trader '%s' prompt updated to '%s'", trader.GetName(), promptName)
+	return nil
+}

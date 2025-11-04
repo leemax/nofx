@@ -89,6 +89,9 @@ func (s *Server) setupRoutes() {
 		
 		    // 新增：手动触发决策
 		    api.POST("/force-decision", s.handleForceDecision)
+
+		    // 新增：设置trader的默认提示词
+		    api.POST("/trader/prompt", s.handleSetTraderPrompt)
 		  }
 		}
 // handleClosedPositions 处理已平仓交易的请求
@@ -140,15 +143,13 @@ func (s *Server) handleForceDecision(c *gin.Context) {
 		return
 	}
 
-	promptName := c.Query("prompt_name") // prompt_name is optional
-
 	trader, err := s.traderManager.GetTrader(traderID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := trader.ForceDecision(promptName); err != nil {
+	if err := trader.ForceDecision(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("强制决策失败: %v", err)})
 		return
 	}
@@ -526,4 +527,24 @@ func (s *Server) Start() error {
 	log.Println()
 
 	return s.router.Run(addr)
+}
+
+// handleSetTraderPrompt sets the default prompt for a specific trader
+func (s *Server) handleSetTraderPrompt(c *gin.Context) {
+	var req struct {
+		TraderID   string `json:"trader_id"`
+		PromptName string `json:"prompt_name"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	if err := s.traderManager.SetTraderPrompt(req.TraderID, req.PromptName); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Prompt updated successfully"})
 }

@@ -11,6 +11,7 @@ import (
 	"nofx/mcp"
 	"nofx/pool"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -88,6 +89,7 @@ type AutoTrader struct {
 	positionOpenCycle     map[string]int   // 持仓开仓周期 (symbol_side -> cycle_number)
 	positionStopLoss      map[string]float64 // 持仓初始止损价 (symbol_side -> price)
 	promptName            string           // 当前使用的系统提示词名称
+	mu                    sync.Mutex       // Mutex for thread-safe operations
 }
 
 // NewAutoTrader 创建自动交易器
@@ -248,9 +250,9 @@ func (at *AutoTrader) Stop() {
 }
 
 // ForceDecision 强制执行一次决策周期
-func (at *AutoTrader) ForceDecision(promptName string) error {
+func (at *AutoTrader) ForceDecision() error {
 	log.Printf("\n" + strings.Repeat("=", 70))
-	log.Printf("⚡️ 手动强制决策周期触发 (使用提示词: %s)", promptName)
+	log.Printf("⚡️ 手动强制决策周期触发 (使用提示词: %s)", at.promptName)
 	log.Printf(strings.Repeat("=", 70))
 
 	// 确保即使在暂停状态下也能强制执行
@@ -261,17 +263,7 @@ func (at *AutoTrader) ForceDecision(promptName string) error {
 		return fmt.Errorf("风险控制暂停中，无法强制决策")
 	}
 
-	// 使用传入的promptName覆盖当前的promptName
-	originalPromptName := at.promptName
-	if promptName != "" {
-		at.promptName = promptName
-		log.Printf("  - 临时使用提示词: %s", promptName)
-	}
-
 	err := at.runCycle()
-
-	// 恢复原始的promptName
-	at.promptName = originalPromptName
 
 	if err != nil {
 		log.Printf("❌ 强制决策周期执行失败: %v", err)
@@ -354,6 +346,7 @@ func (at *AutoTrader) runCycle() error {
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 
 	// 4. 调用AI获取完整决策
+	log.Printf("🤖 [诊断] 当前决策周期使用的提示词是: %s", at.promptName)
 	log.Println("🤖 正在请求AI分析并决策...")
 	decision, err := decision.GetFullDecision(ctx, at.mcpClient, "", false, "", at.promptName)
 
@@ -1090,4 +1083,11 @@ func sortDecisionsByPriority(decisions []decision.Decision) []decision.Decision 
 	}
 
 	return sorted
+}
+
+// SetPromptName updates the prompt name for the trader.
+func (t *AutoTrader) SetPromptName(promptName string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.promptName = promptName
 }

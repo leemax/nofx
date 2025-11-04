@@ -548,6 +548,8 @@ export default function AILearning({ traderId }: AILearningProps) {
                     <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Avg Open</th>
                     <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Avg Close</th>
                     <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Quantity</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Open Time</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: '#94A3B8' }}>Close Time</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -577,6 +579,12 @@ export default function AILearning({ traderId }: AILearningProps) {
                       </td>
                       <td className="px-4 py-3 text-right mono text-sm" style={{ color: '#CBD5E1' }}>
                         {pos.total_quantity.toFixed(4)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-xs" style={{ color: '#94A3B8' }}>
+                        {formatTimestamp(pos.open_time)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-xs" style={{ color: '#94A3B8' }}>
+                        {formatTimestamp(pos.close_time)}
                       </td>
                     </tr>
                   ))}
@@ -636,17 +644,60 @@ export default function AILearning({ traderId }: AILearningProps) {
 function formatDuration(duration: string | undefined): string {
   if (!duration) return '-';
 
-  const match = duration.match(/(\d+h)?(\d+m)?(\d+\.?\d*s)?/);
-  if (!match) return duration;
+  // 尝试匹配 "XhYmZs" 格式
+  const hmsMatch = duration.match(/(\d+)h(\d+)m(\d+\.?\d*)s/);
+  if (hmsMatch) {
+    const [, h, m, s] = hmsMatch;
+    let result = '';
+    if (h && h !== '0') result += `${h}h `;
+    if (m && m !== '0') result += `${m}m `;
+    if (s && parseFloat(s) > 0) result += `${parseFloat(s).toFixed(0)}s`;
+    return result.trim() || '0s';
+  }
 
-  const hours = match[1] || '';
-  const minutes = match[2] || '';
-  const seconds = match[3] || '';
+  // 尝试匹配纯秒数
+  const secondsMatch = duration.match(/^(\d+\.?\d*)s$/);
+  if (secondsMatch) {
+    const totalSeconds = parseFloat(secondsMatch[1]);
+    if (totalSeconds < 60) return `${totalSeconds.toFixed(0)}s`;
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    let result = '';
+    if (hours > 0) result += `${hours}h `;
+    if (minutes > 0) result += `${minutes}m `;
+    if (seconds > 0) result += `${seconds.toFixed(0)}s`;
+    return result.trim();
+  }
+  
+  return duration; // Fallback
+}
 
-  let result = '';
-  if (hours) result += hours.replace('h', '小时');
-  if (minutes) result += minutes.replace('m', '分');
-  if (!hours && seconds) result += seconds.replace(/(\d+)\.?\d*s/, '$1秒');
+// 格式化时间戳
+function formatTimestamp(timestamp: string | undefined): string {
+  if (!timestamp) return '-';
+  try {
+    const date = new Date(timestamp);
+    // 获取UTC时间组件
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth() + 1; // 月份从0开始
+    const day = date.getUTCDate();
+    const hours = date.getUTCHours();
+    const minutes = date.getUTCMinutes();
+    const seconds = date.getUTCSeconds();
 
-  return result || duration;
+    // 转换为UTC+8
+    const bzDate = new Date(Date.UTC(year, month - 1, day, hours + 8, minutes, seconds));
+
+    const bzYear = bzDate.getFullYear();
+    const bzMonth = (bzDate.getMonth() + 1).toString().padStart(2, '0');
+    const bzDay = bzDate.getDate().toString().padStart(2, '0');
+    const bzHours = bzDate.getHours().toString().padStart(2, '0');
+    const bzMinutes = bzDate.getMinutes().toString().padStart(2, '0');
+    const bzSeconds = bzDate.getSeconds().toString().padStart(2, '0');
+
+    return `${bzYear}-${bzMonth}-${bzDay} ${bzHours}:${bzMinutes}:${bzSeconds}`;
+  } catch (e) {
+    return timestamp; // 如果格式化失败，返回原始字符串
+  }
 }

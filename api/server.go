@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"nofx/config"
 	"nofx/database"
 	"nofx/decision"
 	"nofx/manager"
@@ -12,30 +13,39 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// PromptResponse 用于API返回给前端的提示词结构
+type PromptResponse struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Text    string `json:"text"`
+}
+
 // Server HTTP API服务器
 type Server struct {
 	router        *gin.Engine
 	traderManager *manager.TraderManager
+	config        *config.Config // 新增配置引用
 	port          int
 }
 
 // NewServer 创建API服务器
-func NewServer(traderManager *manager.TraderManager, port int) *Server {
+func NewServer(traderManager *manager.TraderManager, cfg *config.Config, port int) *Server {
 	// 设置为Release模式（减少日志输出）
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.Default()
 
 	// 配置并启用CORS中间件
-	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:3000"} // 明确允许前端的源
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
-	router.Use(cors.New(config))
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowOrigins = []string{"http://localhost:3000"} // 明确允许前端的源
+	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
+	router.Use(cors.New(corsConfig))
 
 	s := &Server{
 		router:        router,
 		traderManager: traderManager,
+		config:        cfg,
 		port:          port,
 	}
 
@@ -73,9 +83,14 @@ func (s *Server) setupRoutes() {
 		api.GET("/trades", s.handleTrades)
 		// 新增：已平仓交易的盈亏分析
 		api.GET("/closed-positions", s.handleClosedPositions)
-	}
-}
 
+		    // 新增：获取系统提示词列表
+		    api.GET("/prompts", s.handleGetPrompts)
+		
+		    // 新增：手动触发决策
+		    api.POST("/force-decision", s.handleForceDecision)
+		  }
+		}
 // handleClosedPositions 处理已平仓交易的请求
 func (s *Server) handleClosedPositions(c *gin.Context) {
 	_, traderID, err := s.getTraderFromQuery(c)
@@ -97,6 +112,48 @@ func (s *Server) handleClosedPositions(c *gin.Context) {
 	closedPositions := decision.MatchPositions(trades)
 
 	c.JSON(http.StatusOK, closedPositions)
+}
+
+// handleGetPrompts 获取所有系统提示词
+func (s *Server) handleGetPrompts(c *gin.Context) {
+	templates := decision.GetAllPromptTemplates()
+	
+	var promptResponses []PromptResponse
+	for _, tpl := range templates {
+		promptResponses = append(promptResponses, PromptResponse{
+			ID:      tpl.ID,
+			Name:    tpl.Name,
+			Text:    tpl.Content,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"prompts": promptResponses,
+		"default_prompt_id": s.config.DefaultPrompt,
+	})
+}
+
+// handleForceDecision 手动触发一次决策
+func (s *Server) handleForceDecision(c *gin.Context) {
+	traderID := c.Query("trader_id")
+	if traderID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "trader_id is required"})
+		return
+	}
+
+	promptName := c.Query("prompt_name") // prompt_name is optional
+
+	trader, err := s.traderManager.GetTrader(traderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := trader.ForceDecision(promptName); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("强制决策失败: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "决策已触发"})
 }
 
 // handleTrades 交易记录

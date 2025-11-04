@@ -82,6 +82,7 @@ func main() {
 			cfg.MaxDrawdown,
 			cfg.StopTradingMinutes,
 			cfg.Leverage, // 传递杠杆配置
+			cfg.DefaultPrompt, // 传递默认提示词
 		)
 		if err != nil {
 			log.Fatalf("❌ 初始化trader失败: %v", err)
@@ -119,7 +120,7 @@ func main() {
 	fmt.Println()
 
 	// 创建并启动API服务器
-	apiServer := api.NewServer(traderManager, cfg.APIServerPort)
+	apiServer := api.NewServer(traderManager, cfg, cfg.APIServerPort)
 	go func() {
 		if err := apiServer.Start(); err != nil {
 			log.Printf("❌ API服务器错误: %v", err)

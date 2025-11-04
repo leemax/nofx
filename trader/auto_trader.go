@@ -64,6 +64,7 @@ type AutoTraderConfig struct {
 	MaxDailyLoss    float64       // 最大日亏损百分比（提示）
 	MaxDrawdown     float64       // 最大回撤百分比（提示）
 	StopTradingTime time.Duration // 触发风控后暂停时长
+	PromptName      string           // 使用的系统提示词名称
 }
 
 // AutoTrader 自动交易器
@@ -86,6 +87,7 @@ type AutoTrader struct {
 	positionFirstSeenTime map[string]int64 // 持仓首次出现时间 (symbol_side -> timestamp毫秒)
 	positionOpenCycle     map[string]int   // 持仓开仓周期 (symbol_side -> cycle_number)
 	positionStopLoss      map[string]float64 // 持仓初始止损价 (symbol_side -> price)
+	promptName            string           // 当前使用的系统提示词名称
 }
 
 // NewAutoTrader 创建自动交易器
@@ -182,6 +184,7 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		positionFirstSeenTime: make(map[string]int64),
 		positionOpenCycle:     make(map[string]int),
 		positionStopLoss:      make(map[string]float64),
+		promptName:            config.PromptName, // 设置提示词名称
 	}, nil
 }
 
@@ -242,6 +245,41 @@ func (at *AutoTrader) StartUIDataPoller() {
 func (at *AutoTrader) Stop() {
 	at.isRunning = false
 	log.Println("⏹ 自动交易系统停止")
+}
+
+// ForceDecision 强制执行一次决策周期
+func (at *AutoTrader) ForceDecision(promptName string) error {
+	log.Printf("\n" + strings.Repeat("=", 70))
+	log.Printf("⚡️ 手动强制决策周期触发 (使用提示词: %s)", promptName)
+	log.Printf(strings.Repeat("=", 70))
+
+	// 确保即使在暂停状态下也能强制执行
+	// 但我们仍然需要检查 at.stopUntil 来决定是否真的要执行
+	if time.Now().Before(at.stopUntil) {
+		remaining := at.stopUntil.Sub(time.Now())
+		log.Printf("⏸ 风险控制：暂停交易中，剩余 %.0f 分钟，无法强制决策", remaining.Minutes())
+		return fmt.Errorf("风险控制暂停中，无法强制决策")
+	}
+
+	// 使用传入的promptName覆盖当前的promptName
+	originalPromptName := at.promptName
+	if promptName != "" {
+		at.promptName = promptName
+		log.Printf("  - 临时使用提示词: %s", promptName)
+	}
+
+	err := at.runCycle()
+
+	// 恢复原始的promptName
+	at.promptName = originalPromptName
+
+	if err != nil {
+		log.Printf("❌ 强制决策周期执行失败: %v", err)
+		return err
+	}
+
+	log.Printf("✅ 强制决策周期执行成功")
+	return nil
 }
 
 // runCycle 运行一个交易周期（使用AI全权决策）
@@ -317,7 +355,7 @@ func (at *AutoTrader) runCycle() error {
 
 	// 4. 调用AI获取完整决策
 	log.Println("🤖 正在请求AI分析并决策...")
-	decision, err := decision.GetFullDecision(ctx, at.mcpClient, "", false, "")
+	decision, err := decision.GetFullDecision(ctx, at.mcpClient, "", false, "", at.promptName)
 
 	// 即使有错误，也保存思维链、决策和输入prompt（用于debug）
 	if decision != nil {

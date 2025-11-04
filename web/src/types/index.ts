@@ -117,3 +117,16 @@ export interface Statistics {
   total_open_positions: number;
   total_close_positions: number;
 }
+
+// 新增：系统提示词
+export interface Prompt {
+  id: string;
+  name: string;
+  text: string;
+}
+
+// 新增：获取提示词列表的API响应结构
+export interface PromptsResponse {
+  prompts: Prompt[];
+  default_prompt_id: string;
+}

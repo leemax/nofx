@@ -11,7 +11,8 @@ import (
 
 // PromptTemplate 系统提示词模板
 type PromptTemplate struct {
-	Name    string // 模板名称（文件名，不含扩展名）
+	ID      string // 模板ID（文件名，不含扩展名）
+	Name    string // 模板名称（更具描述性，可从内容中提取）
 	Content string // 模板内容
 }
 
@@ -69,23 +70,41 @@ func (pm *PromptManager) LoadTemplates(dir string) error {
 	// 加载每个模板文件
 	for _, file := range files {
 		// 读取文件内容
-		content, err := os.ReadFile(file)
+		contentBytes, err := os.ReadFile(file)
 		if err != nil {
 			log.Printf("⚠️  读取提示词文件失败 %s: %v", file, err)
 			continue
 		}
+		content := string(contentBytes)
 
-		// 提取文件名（不含扩展名）作为模板名称
+		// 提取文件名（不含扩展名）作为模板ID
 		fileName := filepath.Base(file)
-		templateName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+		templateID := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 
-		// 存储模板
-		pm.templates[templateName] = &PromptTemplate{
-			Name:    templateName,
-			Content: string(content),
+		// 尝试从内容中提取描述性名称（取第一行非空内容）
+		lines := strings.Split(content, "\n")
+		var descriptiveName string
+		for _, line := range lines {
+			trimmedLine := strings.TrimSpace(line)
+			if len(trimmedLine) > 0 {
+				descriptiveName = trimmedLine
+				break
+			}
 		}
 
-		log.Printf("  📄 加载提示词模板: %s (%s)", templateName, fileName)
+		// 如果没有提取到描述性名称，则使用ID作为名称
+		if descriptiveName == "" {
+			descriptiveName = templateID
+		}
+
+		// 存储模板
+		pm.templates[templateID] = &PromptTemplate{
+			ID:      templateID,
+			Name:    descriptiveName,
+			Content: content,
+		}
+
+		log.Printf("  📄 加载提示词模板: ID=%s, Name=\"%s\" (%s)", templateID, descriptiveName, fileName)
 	}
 
 	return nil

@@ -13,6 +13,8 @@ import type {
   DecisionRecord,
   Statistics,
   TraderInfo,
+  Prompt,
+  PromptsResponse,
 } from './types';
 
 type Page = 'competition' | 'trader';
@@ -55,6 +57,22 @@ function App() {
   const { data: traders } = useSWR<TraderInfo[]>('traders', api.getTraders, {
     refreshInterval: 10000,
   });
+
+  // 获取系统提示词列表
+  const { data: promptsResponse } = useSWR<PromptsResponse>('prompts', api.getPrompts);
+  const prompts = promptsResponse?.prompts || [];
+  const defaultPromptId = promptsResponse?.default_prompt_id;
+  const [selectedPromptId, setSelectedPromptId] = useState<string | undefined>();
+
+  // 当获取到prompts后，设置默认选中
+  useEffect(() => {
+    if (prompts.length > 0 && !selectedPromptId && defaultPromptId) {
+      setSelectedPromptId(defaultPromptId);
+    } else if (prompts.length > 0 && !selectedPromptId) {
+      // Fallback to the first prompt if defaultPromptId is not set
+      setSelectedPromptId(prompts[0].id);
+    }
+  }, [prompts, selectedPromptId, defaultPromptId]);
 
   // 当获取到traders后，设置默认选中第一个
   useEffect(() => {
@@ -245,7 +263,54 @@ function App() {
                 </select>
               )}
 
-              {/* Status Indicator (only show on trader page) */}
+              {/* Prompt Selector (only show on trader page) */}
+              {currentPage === 'trader' && prompts && prompts.length > 0 && (
+                <select
+                  value={selectedPromptId}
+                  onChange={(e) => setSelectedPromptId(e.target.value)}
+                  className="rounded px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium cursor-pointer transition-colors flex-1 sm:flex-initial min-w-48"
+                  style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                >
+                  {prompts.map((prompt) => (
+                    <option key={prompt.id} value={prompt.id}>
+                      {prompt.id}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {currentPage === 'trader' && status && (
+                <div
+                  className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded"
+                  style={status.is_running
+                    ? { background: 'rgba(14, 203, 129, 0.1)', color: '#0ECB81', border: '1px solid rgba(14, 203, 129, 0.2)' }
+                    : { background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D', border: '1px solid rgba(246, 70, 93, 0.2)' }
+                  }
+                >
+                  <div
+                    className={`w-2 h-2 rounded-full ${status.is_running ? 'pulse-glow' : ''}`}
+                    style={{ background: status.is_running ? '#0ECB81' : '#F6465D' }}
+                  />
+                  <span className="font-semibold mono text-xs">
+                    {t(status.is_running ? 'running' : 'stopped', language)}
+                  </span>
+                </div>
+              )}
+
+              {/* Force Decision Button (only show on trader page) */}
+              {currentPage === 'trader' && (
+                <button
+                  onClick={async () => {
+                    if (selectedTraderId) {
+                      await api.forceDecision(selectedTraderId, selectedPromptId || '');
+                      alert('Decision triggered!');
+                    }
+                  }}
+                  className="rounded px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium cursor-pointer transition-colors flex-1 sm:flex-initial ml-4"
+                  style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                >
+                  Force Decision
+                </button>
+              )}
               {currentPage === 'trader' && status && (
                 <div
                   className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded"

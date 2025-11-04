@@ -50,6 +50,13 @@ type LeverageConfig struct {
 	AltcoinLeverage int `json:"altcoin_leverage"` // 山寨币的杠杆倍数（主账户建议5-20，子账户≤5）
 }
 
+// Prompt represents a single decision prompt
+type Prompt struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Text string `json:"text"`
+}
+
 // Config 总配置
 type Config struct {
 	Traders            []TraderConfig `json:"traders"`
@@ -62,6 +69,8 @@ type Config struct {
 	MaxDrawdown        float64        `json:"max_drawdown"`
 	StopTradingMinutes int            `json:"stop_trading_minutes"`
 	Leverage           LeverageConfig `json:"leverage"` // 杠杆配置
+	DecisionPrompts    []Prompt       `json:"decision_prompts"`
+	DefaultPrompt      string         `json:"default_prompt"`
 }
 
 // LoadConfig 从文件加载配置

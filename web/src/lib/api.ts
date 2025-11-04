@@ -134,4 +134,22 @@ export const api = {
     if (!res.ok) throw new Error('获取已平仓交易失败');
     return res.json();
   },
+
+  // 获取系统提示词列表
+  async getPrompts(): Promise<PromptsResponse> {
+    const res = await fetch(`${API_BASE}/prompts`, fetchOptions);
+    if (!res.ok) throw new Error('获取系统提示词列表失败');
+    return res.json();
+  },
+
+  // 手动触发决策
+  async forceDecision(traderId: string, promptName: string): Promise<any> {
+    const url = `${API_BASE}/force-decision?trader_id=${traderId}&prompt_name=${promptName}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      ...fetchOptions,
+    });
+    if (!res.ok) throw new Error('手动触发决策失败');
+    return res.json();
+  },
 };

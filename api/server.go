@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"nofx/database"
 	"nofx/manager"
 
 	"github.com/gin-contrib/cors"
@@ -66,7 +67,29 @@ func (s *Server) setupRoutes() {
 		api.GET("/statistics", s.handleStatistics)
 		api.GET("/equity-history", s.handleEquityHistory)
 		api.GET("/performance", s.handlePerformance)
+
+		// 交易记录
+		api.GET("/trades", s.handleTrades)
 	}
+}
+
+// handleTrades 交易记录
+func (s *Server) handleTrades(c *gin.Context) {
+	_, traderID, err := s.getTraderFromQuery(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	trades, err := database.GetTrades(traderID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("获取交易记录失败: %v", err),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, trades)
 }
 
 // handleHealth 健康检查

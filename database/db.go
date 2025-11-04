@@ -169,3 +169,40 @@ func InsertTrade(tradeID, orderID int64, traderID, symbol, commissionAsset strin
 
 	return nil
 }
+
+// TradeRecord 映射trades表的一条记录
+type TradeRecord struct {
+	TradeID         int64     `json:"trade_id"`
+	OrderID         int64     `json:"order_id"`
+	TraderID        string    `json:"trader_id"`
+	Symbol          string    `json:"symbol"`
+	Price           float64   `json:"price"`
+	Quantity        float64   `json:"quantity"`
+	Commission      float64   `json:"commission"`
+	CommissionAsset string    `json:"commission_asset"`
+	IsBuyer         bool      `json:"is_buyer"`
+	IsMaker         bool      `json:"is_maker"`
+	Timestamp       time.Time `json:"timestamp"`
+}
+
+// GetTrades 从trades表中获取指定traderID的交易记录
+func GetTrades(traderID string) ([]TradeRecord, error) {
+	query := `SELECT trade_id, order_id, trader_id, symbol, price, quantity, commission, commission_asset, is_buyer, is_maker, timestamp FROM trades WHERE trader_id = ? ORDER BY timestamp DESC`
+	rows, err := db.Query(query, traderID)
+	if err != nil {
+		return nil, fmt.Errorf("查询交易记录失败: %w", err)
+	}
+	defer rows.Close()
+
+	var trades []TradeRecord
+	for rows.Next() {
+		var trade TradeRecord
+		if err := rows.Scan(&trade.TradeID, &trade.OrderID, &trade.TraderID, &trade.Symbol, &trade.Price, &trade.Quantity, &trade.Commission, &trade.CommissionAsset, &trade.IsBuyer, &trade.IsMaker, &trade.Timestamp); err != nil {
+			log.Printf("❌ 扫描交易记录失败: %v", err)
+			continue
+		}
+		trades = append(trades, trade)
+	}
+
+	return trades, nil
+}

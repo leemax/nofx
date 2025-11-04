@@ -112,4 +112,14 @@ export const api = {
     if (!res.ok) throw new Error('获取AI学习数据失败');
     return res.json();
   },
+
+  // 获取交易记录（支持trader_id）
+  async getTrades(traderId?: string): Promise<TradeRecord[]> {
+    const url = traderId
+      ? `${API_BASE}/trades?trader_id=${traderId}`
+      : `${API_BASE}/trades`;
+    const res = await fetch(url, fetchOptions);
+    if (!res.ok) throw new Error('获取交易记录失败');
+    return res.json();
+  },
 };

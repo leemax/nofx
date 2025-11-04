@@ -40,16 +40,29 @@ export interface Position {
 }
 
 // 决策动作
-export interface DecisionAction {
-  action: string;
+export type Decision = {
   symbol: string;
-  quantity: number;
-  leverage: number;
-  price: number;
+  action: 'buy' | 'sell' | 'hold' | 'wait';
+  leverage?: number;
+  position_size_usd?: number;
+  stop_loss?: number;
+  take_profit?: number;
+  confidence?: number;
+  reasoning?: string;
+};
+
+export interface TradeRecord {
+  trade_id: number;
   order_id: number;
-  timestamp: string;
-  success: boolean;
-  error: string;
+  trader_id: string;
+  symbol: string;
+  price: number;
+  quantity: number;
+  commission: number;
+  commission_asset: string;
+  is_buyer: boolean;
+  is_maker: boolean;
+  timestamp: string; // ISO 8601 date string
 }
 
 // 决策记录

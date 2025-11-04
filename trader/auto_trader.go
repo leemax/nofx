@@ -192,6 +192,9 @@ func (at *AutoTrader) Run() error {
 	log.Printf("⚙️  扫描间隔: %v", at.config.ScanInterval)
 	log.Println("🤖 AI将全权决定杠杆、仓位大小、止损止盈等参数")
 
+	// 启动UI数据轮询器
+	go at.StartUIDataPoller()
+
 	ticker := time.NewTicker(at.config.ScanInterval)
 	defer ticker.Stop()
 
@@ -210,6 +213,28 @@ func (at *AutoTrader) Run() error {
 	}
 
 	return nil
+}
+
+// StartUIDataPoller 启动UI数据轮询器，独立刷新账户和持仓信息
+func (at *AutoTrader) StartUIDataPoller() {
+	log.Println("📊 UI数据轮询器启动，每15秒刷新一次账户和持仓信息...")
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for at.isRunning {
+		select {
+		case <-ticker.C:
+			// 刷新账户余额
+			if _, err := at.trader.GetBalance(); err != nil {
+				log.Printf("❌ UI数据轮询器：刷新账户余额失败: %v", err)
+			}
+			// 刷新持仓信息
+			if _, err := at.trader.GetPositions(); err != nil {
+				log.Printf("❌ UI数据轮询器：刷新持仓信息失败: %v", err)
+			}
+		}
+	}
+	log.Println("📊 UI数据轮询器停止")
 }
 
 // Stop 停止自动交易

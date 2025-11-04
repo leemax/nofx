@@ -34,15 +34,20 @@ type FuturesTrader struct {
 // NewFuturesTrader 创建合约交易器
 func NewFuturesTrader(apiKey, secretKey, traderID string) *FuturesTrader {
 	client := futures.NewClient(apiKey, secretKey)
-	return &FuturesTrader{
+	trader := &FuturesTrader{
 		client:        client,
 		traderID:      traderID,
 		cacheDuration: 15 * time.Second, // 15秒缓存
 	}
+
+	// 启动WebSocket用户数据流
+	go trader.startUserDataStream()
+
+	return trader
 }
 
-// processOrderAndTrades 处理订单和成交回报，并写入数据库
-func (t *FuturesTrader) processOrderAndTrades(order *futures.CreateOrderResponse) {
+// processNewOrder 只处理新创建的订单，将其初始状态写入数据库
+func (t *FuturesTrader) processNewOrder(order *futures.CreateOrderResponse) {
 	if order == nil {
 		return
 	}
@@ -53,33 +58,7 @@ func (t *FuturesTrader) processOrderAndTrades(order *futures.CreateOrderResponse
 	createdAt := time.Unix(0, order.UpdateTime*int64(time.Millisecond))
 
 	if err := database.InsertOrder(order.OrderID, t.traderID, order.Symbol, string(order.Side), string(order.Type), string(order.Status), price, quantity, createdAt); err != nil {
-		log.Printf("❌ 数据库错误：插入订单失败: %v", err)
-	}
-
-	// 如果订单立即成交，则查询该订单以获取成交详情（包括手续费）
-	if order.Status == futures.OrderStatusTypeFilled {
-		// 等待短暂时间，确保成交信息在币安后端可用
-		time.Sleep(1 * time.Second)
-
-		// 使用ListAccountTradeService获取指定订单的成交记录
-		trades, err := t.client.NewListAccountTradeService().Symbol(order.Symbol).OrderID(order.OrderID).Do(context.Background())
-		if err != nil {
-			log.Printf("❌ API错误：查询订单 #%d 的成交详情失败: %v", order.OrderID, err)
-			return
-		}
-
-		for _, trade := range trades {
-			tradePrice, _ := strconv.ParseFloat(trade.Price, 64)
-			tradeQty, _ := strconv.ParseFloat(trade.Quantity, 64) // 使用正确的Quantity字段
-			commission, _ := strconv.ParseFloat(trade.Commission, 64)
-			timestamp := time.Unix(0, trade.Time*int64(time.Millisecond))
-
-			// 使用正确的字段名：trade.Buyer 和 trade.Maker
-			if err := database.InsertTrade(trade.ID, order.OrderID, t.traderID, trade.Symbol, trade.CommissionAsset, tradePrice, tradeQty, commission, trade.Buyer, trade.Maker, timestamp); err != nil {
-				log.Printf("❌ 数据库错误：插入成交失败: %v", err)
-			}
-			log.Printf("💾 数据库：已记录成交 #%d (订单 #%d)，手续费: %f %s", trade.ID, order.OrderID, commission, trade.CommissionAsset)
-		}
+		log.Printf("❌ 数据库错误：插入初始订单失败: %v", err)
 	}
 }
 
@@ -284,7 +263,7 @@ func (t *FuturesTrader) OpenLong(symbol string, quantity float64, leverage int) 
 	}
 
 	// 处理订单和成交数据并写入数据库
-	go t.processOrderAndTrades(order)
+	go t.processNewOrder(order)
 
 	log.Printf("✓ 开多仓成功: %s 数量: %s", symbol, quantityStr)
 	log.Printf("  订单ID: %d", order.OrderID)
@@ -333,7 +312,7 @@ func (t *FuturesTrader) OpenShort(symbol string, quantity float64, leverage int)
 	}
 
 	// 处理订单和成交数据并写入数据库
-	go t.processOrderAndTrades(order)
+	go t.processNewOrder(order)
 
 	log.Printf("✓ 开空仓成功: %s 数量: %s", symbol, quantityStr)
 	log.Printf("  订单ID: %d", order.OrderID)
@@ -386,7 +365,7 @@ func (t *FuturesTrader) CloseLong(symbol string, quantity float64) (map[string]i
 	}
 
 	// 处理订单和成交数据并写入数据库
-	go t.processOrderAndTrades(order)
+	go t.processNewOrder(order)
 
 	log.Printf("✓ 平多仓成功: %s 数量: %s", symbol, quantityStr)
 
@@ -443,7 +422,7 @@ func (t *FuturesTrader) CloseShort(symbol string, quantity float64) (map[string]
 	}
 
 	// 处理订单和成交数据并写入数据库
-	go t.processOrderAndTrades(order)
+	go t.processNewOrder(order)
 
 	log.Printf("✓ 平空仓成功: %s 数量: %s", symbol, quantityStr)
 
@@ -668,4 +647,89 @@ func stringContains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// processFilledOrder 处理已成交的订单，获取并存储其交易详情
+func (t *FuturesTrader) processFilledOrder(orderID int64, symbol string) {
+	// 等待短暂时间，确保成交信息在币安后端可用
+	time.Sleep(1 * time.Second)
+
+	trades, err := t.client.NewListAccountTradeService().Symbol(symbol).OrderID(orderID).Do(context.Background())
+	if err != nil {
+		log.Printf("❌ WEBSOCKET错误：查询订单 #%d 的成交详情失败: %v", orderID, err)
+		return
+	}
+
+	for _, trade := range trades {
+		tradePrice, _ := strconv.ParseFloat(trade.Price, 64)
+		tradeQty, _ := strconv.ParseFloat(trade.Quantity, 64)
+		commission, _ := strconv.ParseFloat(trade.Commission, 64)
+		timestamp := time.Unix(0, trade.Time*int64(time.Millisecond))
+
+		if err := database.InsertTrade(trade.ID, orderID, t.traderID, trade.Symbol, trade.CommissionAsset, tradePrice, tradeQty, commission, trade.Buyer, trade.Maker, timestamp); err != nil {
+			log.Printf("❌ 数据库错误(from WebSocket)：插入成交失败: %v", err)
+			continue // 继续处理下一条成交记录
+		}
+		log.Printf("💾✅ 数据库(from WebSocket)：已记录成交 #%d (订单 #%d)，手续费: %f %s", trade.ID, orderID, commission, trade.CommissionAsset)
+	}
+}
+
+// startUserDataStream 启动用户数据WebSocket流
+func (t *FuturesTrader) startUserDataStream() {
+	// 1. 获取ListenKey
+	listenKey, err := t.client.NewStartUserStreamService().Do(context.Background())
+	if err != nil {
+		log.Printf("❌ WEBSOCKET错误：获取listenKey失败: %v", err)
+		return
+	}
+	log.Println("✓ WEBSOCKET：获取ListenKey成功")
+
+	// 2. 定期延长ListenKey有效期 (每30分钟)
+	go func() {
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			err := t.client.NewKeepaliveUserStreamService().ListenKey(listenKey).Do(context.Background())
+			if err != nil {
+				log.Printf("❌ WEBSOCKET错误：延长listenKey有效期失败: %v", err)
+			}
+		}
+	}()
+
+	// 3. 启动WebSocket连接
+	wsHandler := func(event *futures.WsUserDataEvent) {
+		if event.Event == futures.UserDataEventTypeOrderTradeUpdate {
+			order := event.OrderTradeUpdate
+			log.Printf("📡 WEBSOCKET: 收到订单更新: Symbol=%s, Status=%s, OrderID=%d", order.Symbol, order.Status, order.ID)
+
+			// 更新数据库中的订单状态
+			if err := database.UpdateOrderStatus(order.ID, string(order.Status)); err != nil {
+				log.Printf("❌ 数据库错误(from WebSocket)：更新订单状态失败: %v", err)
+			}
+
+			// 如果订单已成交，处理成交信息
+			if order.Status == futures.OrderStatusTypeFilled {
+				log.Printf("🎉 WEBSOCKET: 订单 #%d 已成交!", order.ID)
+				go t.processFilledOrder(order.ID, order.Symbol)
+			}
+		}
+	}
+
+	 errHandler := func(err error) {
+		log.Printf("❌ WEBSOCKET错误: %v", err)
+		// 尝试重新启动
+		log.Println("尝试在10秒后重启WebSocket...")
+		time.Sleep(10 * time.Second)
+		go t.startUserDataStream()
+	}
+
+	doneC, _, err := futures.WsUserDataServe(listenKey, wsHandler, errHandler)
+	if err != nil {
+		log.Printf("❌ WEBSOCKET错误：连接失败: %v", err)
+		return
+	}
+
+	log.Println("✓ WEBSOCKET：用户数据流已连接，正在监听账户事件...")
+	<-doneC
+	log.Println("WEBSOCKET：用户数据流已断开")
 }

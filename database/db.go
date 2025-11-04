@@ -20,6 +20,9 @@ func InitDB(filepath string) error {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
 
+	// 强制使用单个连接，避免并发写入时的 "database is locked" 错误
+	db.SetMaxOpenConns(1)
+
 	log.Printf("✓ 数据库连接成功: %s", filepath)
 
 	// 创建表
@@ -148,6 +151,23 @@ func InsertOrder(orderID int64, traderID, symbol, side, orderType, status string
 	_, err = stmt.Exec(orderID, traderID, symbol, side, orderType, status, price, quantity, createdAt)
 	if err != nil {
 		return fmt.Errorf("插入订单记录失败: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateOrderStatus 更新订单状态
+func UpdateOrderStatus(orderID int64, status string) error {
+	query := `UPDATE orders SET status = ? WHERE order_id = ?`
+	stmt, err := db.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("准备订单状态更新SQL失败: %w", err)
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(status, orderID)
+	if err != nil {
+		return fmt.Errorf("更新订单状态失败: %w", err)
 	}
 
 	return nil

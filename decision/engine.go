@@ -270,10 +270,10 @@ func buildUserPrompt(ctx *Context) string {
 		ctx.CurrentTime, ctx.CallCount, ctx.RuntimeMinutes))
 
 	// BTC 市场
-	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC {
+	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC && btcData.IntradaySeries != nil {
 		sb.WriteString(fmt.Sprintf("**BTC**: %.2f (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f\n\n",
 			btcData.CurrentPrice, btcData.PriceChange1h, btcData.PriceChange4h,
-			btcData.CurrentMACD, btcData.CurrentRSI7))
+			btcData.IntradaySeries.CurrentMACD, btcData.IntradaySeries.CurrentRSI7))
 	}
 
 	// 账户
@@ -400,7 +400,7 @@ func extractCoTTrace(response string) string {
 	return strings.TrimSpace(response)
 }
 
-// extractDecisions 提取JSON决策列表
+// extractDecisions 提取JSON决策列表 (兼容单个对象或数组)
 func extractDecisions(response string) ([]Decision, error) {
 	// 查找JSON代码块的开始和结束标记
 	jsonCodeBlockStart := "```json"
@@ -418,19 +418,29 @@ func extractDecisions(response string) ([]Decision, error) {
 	}
 	endIdx += startIdx + len(jsonCodeBlockStart) // 调整endIdx为response中的实际位置
 
-	// 提取JSON内容（不包含```json和```）
+	// 提取JSON内容
 	jsonContent := strings.TrimSpace(response[startIdx+len(jsonCodeBlockStart) : endIdx])
 
-	// 🔧 修复常见的JSON格式错误：缺少引号的字段值
+	// 🔧 修复常见的JSON格式错误
 	jsonContent = fixMissingQuotes(jsonContent)
 
-	// 解析JSON
+	// 尝试解析为决策数组
 	var decisions []Decision
-	if err := json.Unmarshal([]byte(jsonContent), &decisions); err != nil {
-		return nil, fmt.Errorf("JSON解析失败: %w\nJSON内容: %s", err, jsonContent)
+	err := json.Unmarshal([]byte(jsonContent), &decisions)
+	if err == nil {
+		return decisions, nil // 成功解析数组
 	}
 
-	return decisions, nil
+	// 如果数组解析失败，尝试解析为单个决策对象
+	var singleDecision Decision
+	err2 := json.Unmarshal([]byte(jsonContent), &singleDecision)
+	if err2 == nil {
+		// 如果单个对象解析成功，将其放入数组中返回
+		return []Decision{singleDecision}, nil
+	}
+
+	// 如果两种方式都失败，返回原始的数组解析错误
+	return nil, fmt.Errorf("JSON解析失败 (尝试数组和对象两种模式后): %w\nJSON内容: %s", err, jsonContent)
 }
 
 // fixMissingQuotes 替换中文引号为英文引号（避免输入法自动转换）
@@ -531,27 +541,22 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 			}
 		}
 
-		// 验证风险回报比（必须≥1:3）
-		// 计算入场价（假设当前市价）
-		var entryPrice float64
-		if d.Action == "open_long" {
-			// 做多：入场价在止损和止盈之间
-			entryPrice = d.StopLoss + (d.TakeProfit-d.StopLoss)*0.2 // 假设在20%位置入场
-		} else {
-			// 做空：入场价在止损和止盈之间
-			entryPrice = d.StopLoss - (d.StopLoss-d.TakeProfit)*0.2 // 假设在20%位置入场
-		}
-
 		var riskPercent, rewardPercent, riskRewardRatio float64
+		marketData, err := market.Get(d.Symbol)
+		if err != nil {
+			return fmt.Errorf("获取当前市场数据失败: %w", err)
+		}
+		currentMarketPrice := marketData.CurrentPrice
+
 		if d.Action == "open_long" {
-			riskPercent = (entryPrice - d.StopLoss) / entryPrice * 100
-			rewardPercent = (d.TakeProfit - entryPrice) / entryPrice * 100
+			riskPercent = (currentMarketPrice - d.StopLoss) / currentMarketPrice * 100
+			rewardPercent = (d.TakeProfit - currentMarketPrice) / currentMarketPrice * 100
 			if riskPercent > 0 {
 				riskRewardRatio = rewardPercent / riskPercent
 			}
 		} else {
-			riskPercent = (d.StopLoss - entryPrice) / entryPrice * 100
-			rewardPercent = (entryPrice - d.TakeProfit) / entryPrice * 100
+			riskPercent = (d.StopLoss - currentMarketPrice) / currentMarketPrice * 100
+			rewardPercent = (currentMarketPrice - d.TakeProfit) / currentMarketPrice * 100
 			if riskPercent > 0 {
 				riskRewardRatio = rewardPercent / riskPercent
 			}

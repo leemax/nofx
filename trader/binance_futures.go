@@ -658,6 +658,7 @@ func trimTrailingZeros(s string) string {
 	return s
 }
 
+
 // FormatQuantity 格式化数量到正确的精度
 func (t *FuturesTrader) FormatQuantity(symbol string, quantity float64) (string, error) {
 	precision, err := t.GetSymbolPrecision(symbol)

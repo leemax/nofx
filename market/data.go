@@ -21,6 +21,7 @@ type Data struct {
 	CurrentRSI7       float64
 	OpenInterest      *OIData
 	FundingRate       float64
+	EMA50_15m         float64 // 15M EMA-50
 	IntradaySeries    *IntradayData
 	LongerTermContext *LongerTermData
 }
@@ -38,6 +39,9 @@ type IntradayData struct {
 	MACDValues  []float64
 	RSI7Values  []float64
 	RSI14Values []float64
+	BBandsUpper []float64 // 3M 布林带上轨
+	BBandsLower []float64 // 3M 布林带下轨
+	ATR14       float64   // 3M ATR (14周期)
 }
 
 // LongerTermData 长期数据(4小时时间框架)
@@ -74,10 +78,16 @@ func Get(symbol string) (*Data, error) {
 		return nil, fmt.Errorf("获取3分钟K线失败: %v", err)
 	}
 
-	// 获取4小时K线数据 (最近10个)
+	// 获取4小时K线数据 (最近60个)
 	klines4h, err := getKlines(symbol, "4h", 60) // 多获取用于计算指标
 	if err != nil {
 		return nil, fmt.Errorf("获取4小时K线失败: %v", err)
+	}
+
+	// 获取15分钟K线数据 (最近50个)
+	klines15m, err := getKlines(symbol, "15m", 50) // 多获取用于计算指标
+	if err != nil {
+		return nil, fmt.Errorf("获取15分钟K线失败: %v", err)
 	}
 
 	// 计算当前指标 (基于3分钟最新数据)
@@ -85,6 +95,9 @@ func Get(symbol string) (*Data, error) {
 	currentEMA20 := calculateEMA(klines3m, 20)
 	currentMACD := calculateMACD(klines3m)
 	currentRSI7 := calculateRSI(klines3m, 7)
+
+	// 计算15分钟EMA-50
+	ema50_15m := calculateEMA(klines15m, 50)
 
 	// 计算价格变化百分比
 	// 1小时价格变化 = 20个3分钟K线前的价格
@@ -131,6 +144,7 @@ func Get(symbol string) (*Data, error) {
 		CurrentRSI7:       currentRSI7,
 		OpenInterest:      oiData,
 		FundingRate:       fundingRate,
+		EMA50_15m:         ema50_15m,
 		IntradaySeries:    intradayData,
 		LongerTermContext: longerTermData,
 	}, nil
@@ -295,6 +309,44 @@ func calculateATR(klines []Kline, period int) float64 {
 	return atr
 }
 
+// calculateBollingerBands 计算布林带
+func calculateBollingerBands(klines []Kline, period int, numStdDev float64) (upper []float64, lower []float64) {
+	if len(klines) < period {
+		return nil, nil
+	}
+
+	upper = make([]float64, len(klines)-period+1)
+	lower = make([]float64, len(klines)-period+1)
+
+	for i := period - 1; i < len(klines); i++ {
+		// 获取当前窗口的收盘价
+		window := make([]float64, period)
+		for j := 0; j < period; j++ {
+			window[j] = klines[i-period+1+j].Close
+		}
+
+		// 计算SMA
+		sum := 0.0
+		for _, price := range window {
+			sum += price
+		}
+		sma := sum / float64(period)
+
+		// 计算标准差
+		sumSqDiff := 0.0
+		for _, price := range window {
+			sumSqDiff += (price - sma) * (price - sma)
+		}
+		stdDev := math.Sqrt(sumSqDiff / float64(period))
+
+		// 计算上轨和下轨
+		upper[i-period+1] = sma + (stdDev * numStdDev)
+		lower[i-period+1] = sma - (stdDev * numStdDev)
+	}
+
+	return upper, lower
+}
+
 // calculateIntradaySeries 计算日内系列数据
 func calculateIntradaySeries(klines []Kline) *IntradayData {
 	data := &IntradayData{
@@ -303,6 +355,8 @@ func calculateIntradaySeries(klines []Kline) *IntradayData {
 		MACDValues:  make([]float64, 0, 10),
 		RSI7Values:  make([]float64, 0, 10),
 		RSI14Values: make([]float64, 0, 10),
+		BBandsUpper: make([]float64, 0, 10),
+		BBandsLower: make([]float64, 0, 10),
 	}
 
 	// 获取最近10个数据点
@@ -336,6 +390,21 @@ func calculateIntradaySeries(klines []Kline) *IntradayData {
 			data.RSI14Values = append(data.RSI14Values, rsi14)
 		}
 	}
+
+	// 计算布林带 (20周期, 2.0标准差)
+	if len(klines) >= 20 {
+		upperBB, lowerBB := calculateBollingerBands(klines, 20, 2.0)
+		// 只取最新的10个值
+		bbStart := len(upperBB) - 10
+		if bbStart < 0 {
+			bbStart = 0
+		}
+		data.BBandsUpper = upperBB[bbStart:]
+		data.BBandsLower = lowerBB[bbStart:]
+	}
+
+	// 计算3M ATR (14周期)
+	data.ATR14 = calculateATR(klines, 14)
 
 	return data
 }
@@ -491,7 +560,16 @@ func Format(data *Data) string {
 		if len(data.IntradaySeries.RSI14Values) > 0 {
 			sb.WriteString(fmt.Sprintf("RSI indicators (14‑Period): %s\n\n", formatFloatSlice(data.IntradaySeries.RSI14Values)))
 		}
+
+		if len(data.IntradaySeries.BBandsUpper) > 0 {
+			sb.WriteString(fmt.Sprintf("Bollinger Bands Upper (3M, 20-period, 2.0 stdDev): %s\n\n", formatFloatSlice(data.IntradaySeries.BBandsUpper)))
+			sb.WriteString(fmt.Sprintf("Bollinger Bands Lower (3M, 20-period, 2.0 stdDev): %s\n\n", formatFloatSlice(data.IntradaySeries.BBandsLower)))
+		}
+
+		sb.WriteString(fmt.Sprintf("3M ATR (14-period): %.3f\n\n", data.IntradaySeries.ATR14))
 	}
+
+	sb.WriteString(fmt.Sprintf("15M EMA-50: %.3f\n\n", data.EMA50_15m))
 
 	if data.LongerTermContext != nil {
 		sb.WriteString("Longer‑term context (4‑hour timeframe):\n\n")

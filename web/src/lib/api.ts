@@ -166,4 +166,26 @@ export const api = {
     if (!res.ok) throw new Error('设置默认提示词失败');
     return res.json();
   },
+
+  // 启动交易员
+  async startTrader(traderId: string): Promise<any> {
+    const url = `${API_BASE}/trader/${traderId}/start`;
+    const res = await fetch(url, {
+      method: 'POST',
+      ...fetchOptions,
+    });
+    if (!res.ok) throw new Error('启动交易员失败');
+    return res.json();
+  },
+
+  // 停止交易员
+  async stopTrader(traderId: string): Promise<any> {
+    const url = `${API_BASE}/trader/${traderId}/stop`;
+    const res = await fetch(url, {
+      method: 'POST',
+      ...fetchOptions,
+    });
+    if (!res.ok) throw new Error('停止交易员失败');
+    return res.json();
+  },
 };

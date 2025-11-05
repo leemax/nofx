@@ -182,3 +182,37 @@ func (tm *TraderManager) SetTraderPrompt(traderID, promptName string) error {
 	log.Printf("✓ Trader '%s' prompt updated to '%s'", trader.GetName(), promptName)
 	return nil
 }
+
+// StartTrader 启动指定ID的trader
+func (tm *TraderManager) StartTrader(traderID string) error {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
+	at, exists := tm.traders[traderID]
+	if !exists {
+		return fmt.Errorf("trader ID '%s' 不存在", traderID)
+	}
+
+	log.Printf("▶️  启动 %s...", at.GetName())
+	go func() {
+		if err := at.Run(); err != nil {
+			log.Printf("❌ %s 运行错误: %v", at.GetName(), err)
+		}
+	}()
+	return nil
+}
+
+// StopTrader 停止指定ID的trader
+func (tm *TraderManager) StopTrader(traderID string) error {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
+	at, exists := tm.traders[traderID]
+	if !exists {
+		return fmt.Errorf("trader ID '%s' 不存在", traderID)
+	}
+
+	log.Printf("⏹  停止 %s...", at.GetName())
+	at.Stop()
+	return nil
+}

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 import { api } from './lib/api';
 import { EquityChart } from './components/EquityChart';
 import { CompetitionPage } from './components/CompetitionPage';
 import AILearning from './components/AILearning';
+import { TraderStatusToggle } from './components/TraderStatusToggle';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { t, type Language } from './i18n/translations';
 import type {
@@ -290,22 +291,22 @@ function App() {
                   ))}
                 </select>
               )}
-              {currentPage === 'trader' && status && (
-                <div
-                  className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded"
-                  style={status.is_running
-                    ? { background: 'rgba(14, 203, 129, 0.1)', color: '#0ECB81', border: '1px solid rgba(14, 203, 129, 0.2)' }
-                    : { background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D', border: '1px solid rgba(246, 70, 93, 0.2)' }
-                  }
-                >
-                  <div
-                    className={`w-2 h-2 rounded-full ${status.is_running ? 'pulse-glow' : ''}`}
-                    style={{ background: status.is_running ? '#0ECB81' : '#F6465D' }}
-                  />
-                  <span className="font-semibold mono text-xs">
-                    {t(status.is_running ? 'running' : 'stopped', language)}
-                  </span>
-                </div>
+
+              {currentPage === 'trader' && status && selectedTraderId && (
+                <TraderStatusToggle
+                  traderId={selectedTraderId}
+                  isRunning={status.is_running}
+                  onToggle={async (newStatus) => {
+                    if (selectedTraderId) {
+                      // Optimistically update the UI
+                      if (status) {
+                        status.is_running = newStatus;
+                      }
+                      // Revalidate the status data after the toggle action
+                      await mutate(`status-${selectedTraderId}`);
+                    }
+                  }}
+                />
               )}
 
               {/* Force Decision Button (only show on trader page) */}
@@ -322,23 +323,6 @@ function App() {
                 >
                   Force Decision
                 </button>
-              )}
-              {currentPage === 'trader' && status && (
-                <div
-                  className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded"
-                  style={status.is_running
-                    ? { background: 'rgba(14, 203, 129, 0.1)', color: '#0ECB81', border: '1px solid rgba(14, 203, 129, 0.2)' }
-                    : { background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D', border: '1px solid rgba(246, 70, 93, 0.2)' }
-                  }
-                >
-                  <div
-                    className={`w-2 h-2 rounded-full ${status.is_running ? 'pulse-glow' : ''}`}
-                    style={{ background: status.is_running ? '#0ECB81' : '#F6465D' }}
-                  />
-                  <span className="font-semibold mono text-xs">
-                    {t(status.is_running ? 'running' : 'stopped', language)}
-                  </span>
-                </div>
               )}
             </div>
           </div>

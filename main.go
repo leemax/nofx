@@ -131,8 +131,8 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// 启动所有trader
-	traderManager.StartAll()
+	// 启动所有trader (现在由API手动控制)
+	// traderManager.StartAll()
 
 	// 等待退出信号
 	<-sigChan

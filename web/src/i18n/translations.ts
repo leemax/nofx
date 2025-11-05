@@ -121,6 +121,7 @@ export const translations = {
     loading: 'Loading...',
     loadingError: '⚠️ Failed to load AI learning data',
     noCompleteData: 'No complete trading data (needs to complete open → close cycle)',
+    toggleError: 'Failed to toggle trader status.',
   },
   zh: {
     // Header
@@ -242,6 +243,7 @@ export const translations = {
     loading: '加载中...',
     loadingError: '⚠️ 加载AI学习数据失败',
     noCompleteData: '暂无完整交易数据（需要完成开仓→平仓的完整周期）',
+    toggleError: '切换交易员状态失败。',
   }
 };
 

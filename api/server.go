@@ -92,6 +92,10 @@ func (s *Server) setupRoutes() {
 
 		    // 新增：设置trader的默认提示词
 		    api.POST("/trader/prompt", s.handleSetTraderPrompt)
+
+		    // 新增：启动/停止trader
+		    api.POST("/trader/:traderId/start", s.handleStartTrader)
+		    api.POST("/trader/:traderId/stop", s.handleStopTrader)
 		  }
 		}
 // handleClosedPositions 处理已平仓交易的请求
@@ -547,4 +551,36 @@ func (s *Server) handleSetTraderPrompt(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Prompt updated successfully"})
+}
+
+// handleStartTrader 启动trader
+func (s *Server) handleStartTrader(c *gin.Context) {
+	traderID := c.Param("traderId")
+	if traderID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "traderId is required"})
+		return
+	}
+
+	if err := s.traderManager.StartTrader(traderID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("启动交易员失败: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "交易员已启动"})
+}
+
+// handleStopTrader 停止trader
+func (s *Server) handleStopTrader(c *gin.Context) {
+	traderID := c.Param("traderId")
+	if traderID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "traderId is required"})
+		return
+	}
+
+	if err := s.traderManager.StopTrader(traderID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("停止交易员失败: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "交易员已停止"})
 }

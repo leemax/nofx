@@ -3,7 +3,6 @@ package decision
 import (
 	"fmt"
 	"nofx/database"
-	"nofx/logger"
 	"time"
 )
 
@@ -57,7 +56,7 @@ func AnalyzePerformanceByPrompt(traderID string, promptName string) (*PromptPerf
 	}
 
 	// 4. 获取所有交易记录
-	allTrades, err := database.GetTradesByTraderID(traderID)
+	allTrades, err := database.GetTrades(traderID)
 	if err != nil {
 		return nil, fmt.Errorf("获取交易记录失败: %w", err)
 	}

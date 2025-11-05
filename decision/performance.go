@@ -34,7 +34,7 @@ type SymbolPerformance struct {
 
 // Analyze a trader's performance based on their closed positions.
 func Analyze(traderID string, records []*logger.DecisionRecord) (*PerformanceAnalysis, error) {
-	trades, err := database.GetTradesByTraderID(traderID)
+	trades, err := database.GetTrades(traderID)
 	if err != nil {
 		return nil, err
 	}

@@ -22,6 +22,7 @@ type Data struct {
 	OpenInterest      *OIData
 	FundingRate       float64
 	EMA50_15m         float64 // 15M EMA-50
+	ADX14_15m         float64 // 15M ADX(14)
 	IntradaySeries    *IntradayData
 	LongerTermContext *LongerTermData
 }
@@ -39,9 +40,12 @@ type IntradayData struct {
 	MACDValues  []float64
 	RSI7Values  []float64
 	RSI14Values []float64
-	BBandsUpper []float64 // 3M 布林带上轨
-	BBandsLower []float64 // 3M 布林带下轨
+	BBandsUpper []float64 // 3M 布林带上轨 (20-period, 2.0 stdDev)
+	BBandsLower []float64 // 3M 布林带下轨 (20-period, 2.0 stdDev)
+	BBandsUpper_3m_2_5 []float64 // 3M 布林带上轨 (20-period, 2.5 stdDev)
+	BBandsLower_3m_2_5 []float64 // 3M 布林带下轨 (20-period, 2.5 stdDev)
 	ATR14       float64   // 3M ATR (14周期)
+	ADXValues   []float64 // 3M ADX(14)
 }
 
 // LongerTermData 长期数据(4小时时间框架)
@@ -99,6 +103,9 @@ func Get(symbol string) (*Data, error) {
 	// 计算15分钟EMA-50
 	ema50_15m := calculateEMA(klines15m, 50)
 
+	// 计算15分钟ADX(14)
+	adx14_15m := calculateADX(klines15m, 14)
+
 	// 计算价格变化百分比
 	// 1小时价格变化 = 20个3分钟K线前的价格
 	priceChange1h := 0.0
@@ -145,6 +152,7 @@ func Get(symbol string) (*Data, error) {
 		OpenInterest:      oiData,
 		FundingRate:       fundingRate,
 		EMA50_15m:         ema50_15m,
+		ADX14_15m:         adx14_15m,
 		IntradaySeries:    intradayData,
 		LongerTermContext: longerTermData,
 	}, nil
@@ -347,6 +355,111 @@ func calculateBollingerBands(klines []Kline, period int, numStdDev float64) (upp
 	return upper, lower
 }
 
+// calculateADX 计算ADX (Average Directional Index)
+func calculateADX(klines []Kline, period int) float64 {
+	if len(klines) <= period {
+		return 0.0
+	}
+
+	plusDM := make([]float64, len(klines))
+	minusDM := make([]float64, len(klines))
+	trueRange := make([]float64, len(klines))
+
+	for i := 1; i < len(klines); i++ {
+		high := klines[i].High
+		low := klines[i].Low
+		prevHigh := klines[i-1].High
+		prevLow := klines[i-1].Low
+
+		// 计算True Range (TR)
+		tr1 := high - low
+		tr2 := math.Abs(high - prevHigh)
+		tr3 := math.Abs(low - prevLow)
+		trueRange[i] = math.Max(tr1, math.Max(tr2, tr3))
+
+		// 计算Directional Movement (DM)
+		moveUp := high - prevHigh
+		moveDown := prevLow - low
+
+		if moveUp > moveDown && moveUp > 0 {
+			plusDM[i] = moveUp
+		} else {
+			plusDM[i] = 0
+		}
+
+		if moveDown > moveUp && moveDown > 0 {
+			minusDM[i] = moveDown
+		} else {
+			minusDM[i] = 0
+		}
+	}
+
+	// 计算平滑的TR, +DM, -DM
+	smoothTR := make([]float64, len(klines))
+	smoothPlusDM := make([]float64, len(klines))
+	smoothMinusDM := make([]float64, len(klines))
+
+	// 初始平滑值 (SMA)
+	sumTR := 0.0
+	sumPlusDM := 0.0
+	sumMinusDM := 0.0
+	for i := 1; i <= period; i++ {
+		sumTR += trueRange[i]
+		sumPlusDM += plusDM[i]
+		sumMinusDM += minusDM[i]
+	}
+	smoothTR[period] = sumTR
+	smoothPlusDM[period] = sumPlusDM
+	smoothMinusDM[period] = sumMinusDM
+
+	// 后续平滑值 (Wilder's smoothing)
+	for i := period + 1; i < len(klines); i++ {
+		smoothTR[i] = smoothTR[i-1] - (smoothTR[i-1] / float64(period)) + trueRange[i]
+		smoothPlusDM[i] = smoothPlusDM[i-1] - (smoothPlusDM[i-1] / float64(period)) + plusDM[i]
+		smoothMinusDM[i] = smoothMinusDM[i-1] - (smoothMinusDM[i-1] / float64(period)) + minusDM[i]
+	}
+
+	// 计算DI
+	plusDI := make([]float64, len(klines))
+	minusDI := make([]float64, len(klines))
+	dx := make([]float64, len(klines))
+
+	for i := period; i < len(klines); i++ {
+		if smoothTR[i] == 0 {
+			plusDI[i] = 0
+			minusDI[i] = 0
+		} else {
+			plusDI[i] = (smoothPlusDM[i] / smoothTR[i]) * 100
+			minusDI[i] = (smoothMinusDM[i] / smoothTR[i]) * 100
+		}
+
+		diSum := plusDI[i] + minusDI[i]
+		if diSum == 0 {
+			dx[i] = 0
+		} else {
+			dx[i] = (math.Abs(plusDI[i]-minusDI[i]) / diSum) * 100
+		}
+	}
+
+	// 计算ADX (平滑DX)
+	adx := 0.0
+	// 初始ADX (SMA)
+	sumDX := 0.0
+	for i := period; i < period*2; i++ {
+		sumDX += dx[i]
+	}
+	if period > 0 {
+		adx = sumDX / float64(period)
+	}
+
+	// 后续ADX (Wilder's smoothing)
+	for i := period*2; i < len(klines); i++ {
+		adx = (adx*float64(period-1) + dx[i]) / float64(period)
+	}
+
+	return adx
+}
+
 // calculateIntradaySeries 计算日内系列数据
 func calculateIntradaySeries(klines []Kline) *IntradayData {
 	data := &IntradayData{
@@ -357,6 +470,9 @@ func calculateIntradaySeries(klines []Kline) *IntradayData {
 		RSI14Values: make([]float64, 0, 10),
 		BBandsUpper: make([]float64, 0, 10),
 		BBandsLower: make([]float64, 0, 10),
+		BBandsUpper_3m_2_5: make([]float64, 0, 10),
+		BBandsLower_3m_2_5: make([]float64, 0, 10),
+		ADXValues:   make([]float64, 0, 10),
 	}
 
 	// 获取最近10个数据点
@@ -389,6 +505,11 @@ func calculateIntradaySeries(klines []Kline) *IntradayData {
 			rsi14 := calculateRSI(klines[:i+1], 14)
 			data.RSI14Values = append(data.RSI14Values, rsi14)
 		}
+		// 计算每个点的ADX
+		if i >= 27 { // ADX(14)需要至少28根K线
+			adx := calculateADX(klines[:i+1], 14)
+			data.ADXValues = append(data.ADXValues, adx)
+		}
 	}
 
 	// 计算布林带 (20周期, 2.0标准差)
@@ -401,6 +522,18 @@ func calculateIntradaySeries(klines []Kline) *IntradayData {
 		}
 		data.BBandsUpper = upperBB[bbStart:]
 		data.BBandsLower = lowerBB[bbStart:]
+	}
+
+	// 计算布林带 (20周期, 2.5标准差)
+	if len(klines) >= 20 {
+		upperBB2_5, lowerBB2_5 := calculateBollingerBands(klines, 20, 2.5)
+		// 只取最新的10个值
+		bbStart := len(upperBB2_5) - 10
+		if bbStart < 0 {
+			bbStart = 0
+		}
+		data.BBandsUpper_3m_2_5 = upperBB2_5[bbStart:]
+		data.BBandsLower_3m_2_5 = lowerBB2_5[bbStart:]
 	}
 
 	// 计算3M ATR (14周期)
@@ -566,10 +699,20 @@ func Format(data *Data) string {
 			sb.WriteString(fmt.Sprintf("Bollinger Bands Lower (3M, 20-period, 2.0 stdDev): %s\n\n", formatFloatSlice(data.IntradaySeries.BBandsLower)))
 		}
 
+		if len(data.IntradaySeries.BBandsUpper_3m_2_5) > 0 {
+			sb.WriteString(fmt.Sprintf("Bollinger Bands Upper (3M, 20-period, 2.5 stdDev): %s\n\n", formatFloatSlice(data.IntradaySeries.BBandsUpper_3m_2_5)))
+			sb.WriteString(fmt.Sprintf("Bollinger Bands Lower (3M, 20-period, 2.5 stdDev): %s\n\n", formatFloatSlice(data.IntradaySeries.BBandsLower_3m_2_5)))
+		}
+
 		sb.WriteString(fmt.Sprintf("3M ATR (14-period): %.3f\n\n", data.IntradaySeries.ATR14))
+
+		if len(data.IntradaySeries.ADXValues) > 0 {
+			sb.WriteString(fmt.Sprintf("3M ADX (14-period): %s\n\n", formatFloatSlice(data.IntradaySeries.ADXValues)))
+		}
 	}
 
 	sb.WriteString(fmt.Sprintf("15M EMA-50: %.3f\n\n", data.EMA50_15m))
+	sb.WriteString(fmt.Sprintf("15M ADX (14-period): %.3f\n\n", data.ADX14_15m))
 
 	if data.LongerTermContext != nil {
 		sb.WriteString("Longer‑term context (4‑hour timeframe):\n\n")

@@ -452,6 +452,36 @@ func (t *FuturesTrader) CancelAllOrders(symbol string) error {
 	return nil
 }
 
+// CancelStopLossOrders 取消指定币种和方向的所有止损挂单
+func (t *FuturesTrader) CancelStopLossOrders(symbol string, positionSide string) error {
+	orders, err := t.client.NewListOpenOrdersService().Symbol(symbol).Do(context.Background())
+	if err != nil {
+		return fmt.Errorf("获取开放订单失败: %w", err)
+	}
+
+	for _, order := range orders {
+		if order.Type == futures.OrderTypeStopMarket || order.Type == futures.OrderTypeTakeProfitMarket {
+			// 检查方向是否匹配
+			var targetPosSide futures.PositionSideType
+			if positionSide == "LONG" {
+				targetPosSide = futures.PositionSideTypeLong
+			} else if positionSide == "SHORT" {
+				targetPosSide = futures.PositionSideTypeShort
+			}
+
+			if order.PositionSide == targetPosSide {
+				_, err := t.client.NewCancelOrderService().Symbol(symbol).OrderID(order.OrderID).Do(context.Background())
+				if err != nil {
+					log.Printf("❌ 取消止损/止盈订单 %d 失败: %v", order.OrderID, err)
+					continue
+				}
+				log.Printf("  ✓ 已取消 %s 的止损/止盈订单 %d (类型: %s, 止损价: %s)", symbol, order.OrderID, order.Type, order.StopPrice)
+			}
+		}
+	}
+	return nil
+}
+
 // GetMarketPrice 获取市场价格
 func (t *FuturesTrader) GetMarketPrice(symbol string) (float64, error) {
 	prices, err := t.client.NewListPricesService().Symbol(symbol).Do(context.Background())
@@ -481,6 +511,11 @@ func (t *FuturesTrader) CalculatePositionSize(balance, riskPercent, price float6
 
 // SetStopLoss 设置止损单
 func (t *FuturesTrader) SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error {
+	// 1. 取消该币种和方向的所有现有止损/止盈订单
+	if err := t.CancelStopLossOrders(symbol, positionSide); err != nil {
+		log.Printf("  ⚠ 取消现有止损/止盈订单失败（可能没有）: %v", err)
+	}
+
 	var side futures.SideType
 	var posSide futures.PositionSideType
 

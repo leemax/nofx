@@ -107,7 +107,7 @@ func (s *Server) handleClosedPositions(c *gin.Context) {
 	}
 
 	// 从数据库获取所有交易记录，按时间升序
-	trades, err := database.GetTradesByTraderID(traderID)
+	trades, err := database.GetTrades(traderID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("获取交易记录失败: %v", err),

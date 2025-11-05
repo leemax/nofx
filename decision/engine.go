@@ -72,11 +72,12 @@ type Context struct {
 // Decision AI的交易决策
 type Decision struct {
 	Symbol          string  `json:"symbol"`
-	Action          string  `json:"action"` // "open_long", "open_short", "close_long", "close_short", "hold", "wait"
+	Action          string  `json:"action"` // "open_long", "open_short", "close_long", "close_short", "hold", "wait", "move_sl_to_breakeven"
 	Leverage        int     `json:"leverage,omitempty"`
 	PositionSizeUSD float64 `json:"position_size_usd,omitempty"`
 	StopLoss        float64 `json:"stop_loss,omitempty"`
 	TakeProfit      float64 `json:"take_profit,omitempty"`
+	NewStopLoss     float64 `json:"new_stop_loss,omitempty"` // For "move_sl_to_breakeven" action
 	Confidence      int     `json:"confidence,omitempty"` // 信心度 (0-100)
 	RiskUSD         float64 `json:"risk_usd,omitempty"`   // 最大美元风险
 	Reasoning       string  `json:"reasoning"`
@@ -477,12 +478,13 @@ func findMatchingBracket(s string, start int) int {
 func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int) error {
 	// 验证action
 	validActions := map[string]bool{
-		"open_long":   true,
-		"open_short":  true,
-		"close_long":  true,
-		"close_short": true,
-		"hold":        true,
-		"wait":        true,
+		"open_long":             true,
+		"open_short":            true,
+		"close_long":            true,
+		"close_short":           true,
+		"hold":                  true,
+		"wait":                  true,
+		"move_sl_to_breakeven":  true,
 	}
 
 	if !validActions[d.Action] {
@@ -559,6 +561,10 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 		if riskRewardRatio < 3.0 {
 			return fmt.Errorf("风险回报比过低(%.2f:1)，必须≥3.0:1 [风险:%.2f%% 收益:%.2f%%] [止损:%.2f 止盈:%.2f]",
 				riskRewardRatio, riskPercent, rewardPercent, d.StopLoss, d.TakeProfit)
+		}
+	} else if d.Action == "move_sl_to_breakeven" {
+		if d.NewStopLoss <= 0 {
+			return fmt.Errorf("移动止损价(NewStopLoss)必须大于0")
 		}
 	}
 

@@ -17,7 +17,7 @@ rtAIDecision` 函数。
 ertAIDecision` 的调用，将AI交互的完整上下文存入数据库。                 
 *   **版本管理:**                                                       
     *   将所有相关修改提交到Git，并推送到远程 `feat/decision-engine-enha
-ncements` 分支。                                                        
+nncements` 分支。                                                        
                                                                         
 **变更原因/备注:**                                                      
 此项修改将决策过程（AI交互）与交易结果（订单、成交）集中存储在同一个数据
@@ -49,5 +49,35 @@ AI模型优化奠定了坚实的基础。
 
 **变更原因/备注:**
 此项修改直接响应用户需求，通过在前端“AI学习与反思”模块中展示每笔交易的手续费，极大地提升了交易数据的透明度和用户对交易成本的直观理解，有助于更全面的交易分析和策略优化。
+
+---
+## 2025-11-05 10:00:00 - [Gemini] - 移动止损到盈亏平衡点功能 (Binance Only)
+
+**用户请求:**
+> 移动止损挂单，接收一个新指令，该指令用于修改一个已开仓位的止损点
+
+**Gemini的操作:**
+*   **需求分析:**
+    *   用户需要实现一个“移动止损到盈亏平衡点”的功能，AI在决策时可以发出此指令。
+    *   此功能目前仅针对币安交易所实现。
+*   **方案设计:**
+    *   **`trader/interface.go`**: 接口已包含 `SetStopLoss` 方法，可复用。
+    *   **`decision/engine.go`**:
+        *   修改 `Decision` 结构体，新增 `NewStopLoss float64` 字段。
+        *   在 `Action` 字段中增加 `"move_sl_to_breakeven"` 类型。
+        *   更新 `validateDecision` 函数，为 `"move_sl_to_breakeven"` 动作添加验证逻辑，确保 `NewStopLoss` 字段有效。
+    *   **`trader/binance_futures.go`**:
+        *   新增 `CancelStopLossOrders` 函数，用于取消指定币种和方向的现有止损单。
+        *   修改 `SetStopLoss` 函数，使其在设置新的止损单之前，先调用 `CancelStopLossOrders` 取消旧的止损单。
+    *   **`trader/auto_trader.go`**:
+        *   在 `executeDecisionWithRecord` 中增加对 `"move_sl_to_breakeven"` 动作的处理。
+        *   新增 `executeMoveSLToBreakevenWithRecord` 辅助函数，负责获取当前持仓信息并调用 `at.trader.SetStopLoss` 更新止损价。
+*   **未实现部分:**
+    *   Hyperliquid和Aster交易所的 `SetStopLoss` 实现未修改，目前不支持“移动止损到盈亏平衡点”功能。
+*   **版本管理:**
+    *   将所有相关修改提交到Git。
+
+**变更原因/备注:**
+此功能允许AI在持仓达到一定盈利时，自动将止损点移动到开仓价，从而保护本金，实现“不亏损的交易”。目前仅在币安交易所实现，未来可根据需求扩展到其他交易所。
 
 ---

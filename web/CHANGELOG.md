@@ -7,6 +7,7 @@
 -   **后端**：
     -   ✅ **API扩展**：新增 `POST /api/trader/:traderId/start` 和 `POST /api/trader/:traderId/stop` 接口，用于启动和停止指定Trader的运行。
     -   ✅ **启动行为修改**：后端启动时，Trader不再自动运行，默认为停止状态，等待前端指令。
+    -   ✅ **按提示词分析交易表现**：新增 `GET /api/performance-by-prompt` 接口，允许用户根据指定的交易员ID和提示词名称，获取该提示词下的交易表现分析数据。
 -   **前端**：
     -   ✅ **运行开关**：在Trader详情页头部添加了Trader运行状态的开关，用户可以手动控制Trader的启动和停止。
     -   ✅ **状态同步**：开关状态与后端实时同步，操作后前端界面立即更新。

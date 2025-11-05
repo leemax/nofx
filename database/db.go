@@ -175,7 +175,7 @@ func UpdateOrderStatus(orderID int64, status string) error {
 
 // InsertTrade 插入一条成交记录
 func InsertTrade(tradeID, orderID int64, traderID, symbol, commissionAsset string, price, quantity, commission float64, isBuyer, isMaker bool, timestamp time.Time) error {
-	query := `INSERT INTO trades (trade_id, order_id, trader_id, symbol, price, quantity, commission, commission_asset, is_buyer, is_maker, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	query := `INSERT OR IGNORE INTO trades (trade_id, order_id, trader_id, symbol, price, quantity, commission, commission_asset, is_buyer, is_maker, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	stmt, err := db.Prepare(query)
 	if err != nil {
 		return fmt.Errorf("准备成交插入SQL失败: %w", err)

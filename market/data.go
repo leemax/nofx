@@ -35,18 +35,12 @@ type OIData struct {
 
 // IntradayData 日内数据(3分钟间隔)
 type IntradayData struct {
-	CurrentEMA20 float64
-	CurrentMACD  float64
-	CurrentRSI7  float64
-	MidPrices    []float64
-	EMA20Values  []float64
-	MACDValues   []float64
-	RSI7Values   []float64
-	RSI14Values  []float64
-	BBandsUpper  []float64 // 3M 布林带上轨 (20-period, 2.0 stdDev)
-	BBandsLower  []float64 // 3M 布林带下轨 (20-period, 2.0 stdDev)
-	ATR14        float64   // 3M ATR (14周期)
-	ADXValues    []float64 // 3M ADX(14)
+	CurrentEMA20    float64
+	CurrentMACD     float64
+	CurrentRSI7     float64
+	BBandsUpper_2_5 float64 // 3M 布林带上轨 (20-period, 2.5 stdDev)
+	BBandsLower_2_5 float64 // 3M 布林带下轨 (20-period, 2.5 stdDev)
+	ATR14           float64   // 3M ATR (14周期)
 }
 
 // FifteenMinData 15分钟数据
@@ -587,15 +581,26 @@ func calculateADX(klines []Kline, period int) float64 {
 
 // calculateIntradaySeries 计算日内系列数据 (3m)
 func calculateIntradaySeries(klines []Kline) *IntradayData {
-	if len(klines) == 0 {
+	if len(klines) < 20 { // Bollinger Bands need at least 20 periods
 		return &IntradayData{}
 	}
-	return &IntradayData{
+
+	// Calculate 2.5 std dev Bollinger Bands
+	upperBB, lowerBB := calculateBollingerBands(klines, 20, 2.5)
+
+	data := &IntradayData{
 		CurrentEMA20: calculateEMA(klines, 20),
 		CurrentMACD:  calculateMACD(klines),
 		CurrentRSI7:  calculateRSI(klines, 7),
 		ATR14:        calculateATR(klines, 14),
 	}
+
+	if len(upperBB) > 0 && len(lowerBB) > 0 {
+		data.BBandsUpper_2_5 = upperBB[len(upperBB)-1]
+		data.BBandsLower_2_5 = lowerBB[len(lowerBB)-1]
+	}
+
+	return data
 }
 
 // calculateFifteenMinSeries 计算15分钟序列数据
@@ -813,6 +818,15 @@ func Format(data *Data) string {
 		if data.FifteenMinSeries.MACDSignalValues != nil {
 			sb.WriteString(fmt.Sprintf("- **15M_MACD_signal_series (last 10)**: `%s`\n", formatFloatSlice(data.FifteenMinSeries.MACDSignalValues, 4)))
 		}
+	}
+
+	// 3M Data (for Protocol-S)
+	if data.IntradaySeries != nil {
+		sb.WriteString("\n**3-Minute (3M) Data (for Protocol-S):**\n")
+		sb.WriteString(fmt.Sprintf("- **3M_RSI_7**: `%.2f`\n", data.IntradaySeries.CurrentRSI7))
+		sb.WriteString(fmt.Sprintf("- **3M_ATR_14**: `%.4f`\n", data.IntradaySeries.ATR14))
+		sb.WriteString(fmt.Sprintf("- **3M_BB_Upper_2.5_Std**: `%.4f`\n", data.IntradaySeries.BBandsUpper_2_5))
+		sb.WriteString(fmt.Sprintf("- **3M_BB_Lower_2.5_Std**: `%.4f`\n", data.IntradaySeries.BBandsLower_2_5))
 	}
 
 	return sb.String()

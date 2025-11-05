@@ -137,11 +137,10 @@ func Analyze(traderID string, records []*logger.DecisionRecord) (*PerformanceAna
 
 			// Assuming a risk-free rate of 0 for simplicity in a short-term trading context
 			if stdDev > 0 {
-				// Annualize Sharpe Ratio (assuming 24/7 trading, 365 days * 24 hours * 60 minutes / 3 minutes per cycle = 175200 cycles/year)
-				// This is a rough approximation, a more precise annualization would depend on the return frequency.
-				annualizationFactor := math.Sqrt(float64(175200 / (len(records) / 100))) // Adjust based on number of records and cycles per day
-				analysis.SharpeRatio = (avgReturn / stdDev) * annualizationFactor
-			} else {
+							// Annualize Sharpe Ratio (assuming 24/7 trading, 365 days * 24 hours * 60 minutes / 3 minutes per cycle = 175200 cycles/year)
+							// This is a rough approximation, a more precise annualization would depend on the return frequency.
+							annualizationFactor := math.Sqrt(float64(175200) / float64(len(returns)))
+							analysis.SharpeRatio = (avgReturn / stdDev) * annualizationFactor			} else {
 				analysis.SharpeRatio = 999.0 // Infinite Sharpe if no volatility and positive return
 			}
 		}

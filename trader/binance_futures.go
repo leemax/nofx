@@ -3,7 +3,9 @@ package trader
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"nofx/database"
 	"strconv"
 	"sync"
@@ -16,6 +18,7 @@ import (
 type FuturesTrader struct {
 	client    *futures.Client
 	traderID  string // 用于数据库记录
+	listenKey string // WebSocket listen key
 
 	// 余额缓存
 	cachedBalance     map[string]interface{}
@@ -590,29 +593,55 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 	return nil
 }
 
-// GetSymbolPrecision 获取交易对的数量精度
-func (t *FuturesTrader) GetSymbolPrecision(symbol string) (int, error) {
+// SymbolInfo 交易对的详细信息
+type SymbolInfo struct {
+	Precision   int
+	MinQty      float64
+	MinNotional float64
+}
+
+// GetSymbolInfo 获取交易对的详细信息（精度、最小数量、最小名义价值）
+func (t *FuturesTrader) GetSymbolInfo(symbol string) (SymbolInfo, error) {
 	exchangeInfo, err := t.client.NewExchangeInfoService().Do(context.Background())
 	if err != nil {
-		return 0, fmt.Errorf("获取交易规则失败: %w", err)
+		return SymbolInfo{}, fmt.Errorf("获取交易规则失败: %w", err)
 	}
 
 	for _, s := range exchangeInfo.Symbols {
 		if s.Symbol == symbol {
-			// 从LOT_SIZE filter获取精度
+			var precision int = 3 // 默认精度
+			var minQty float64 = 0.001 // 默认最小数量
+			var minNotional float64 = 10.0 // 默认最小名义价值
+
 			for _, filter := range s.Filters {
 				if filter["filterType"] == "LOT_SIZE" {
 					stepSize := filter["stepSize"].(string)
-					precision := calculatePrecision(stepSize)
-					log.Printf("  %s 数量精度: %d (stepSize: %s)", symbol, precision, stepSize)
-					return precision, nil
+					precision = calculatePrecision(stepSize)
+					if mq, ok := filter["minQty"].(string); ok {
+						minQty, _ = strconv.ParseFloat(mq, 64)
+					}
+				} else if filter["filterType"] == "MIN_NOTIONAL" {
+					if mn, ok := filter["minNotional"].(string); ok {
+						minNotional, _ = strconv.ParseFloat(mn, 64)
+					}
 				}
 			}
+			log.Printf("  %s 数量精度: %d, 最小数量: %.8f, 最小名义价值: %.2f", symbol, precision, minQty, minNotional)
+			return SymbolInfo{Precision: precision, MinQty: minQty, MinNotional: minNotional}, nil
 		}
 	}
 
-	log.Printf("  ⚠ %s 未找到精度信息，使用默认精度3", symbol)
-	return 3, nil // 默认精度为3
+	log.Printf("  ⚠ %s 未找到精度信息，使用默认精度3, 最小数量0.001, 最小名义价值10.0", symbol)
+	return SymbolInfo{Precision: 3, MinQty: 0.001, MinNotional: 10.0}, nil // 默认值
+}
+
+// GetSymbolPrecision 获取交易对的数量精度
+func (t *FuturesTrader) GetSymbolPrecision(symbol string) (int, error) {
+	info, err := t.GetSymbolInfo(symbol)
+	if err != nil {
+		return 0, err
+	}
+	return info.Precision, nil
 }
 
 // calculatePrecision 从stepSize计算精度
@@ -659,15 +688,38 @@ func trimTrailingZeros(s string) string {
 }
 
 
+// GetServerTime 获取币安服务器时间
+func (t *FuturesTrader) GetServerTime() (time.Time, error) {
+	serverTime, err := t.client.NewServerTimeService().Do(context.Background())
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Unix(0, serverTime*int64(time.Millisecond)).UTC(), nil
+}
+
 // FormatQuantity 格式化数量到正确的精度
 func (t *FuturesTrader) FormatQuantity(symbol string, quantity float64) (string, error) {
-	precision, err := t.GetSymbolPrecision(symbol)
+	info, err := t.GetSymbolInfo(symbol)
 	if err != nil {
 		// 如果获取失败，使用默认格式
 		return fmt.Sprintf("%.3f", quantity), nil
 	}
 
-	format := fmt.Sprintf("%%.%df", precision)
+	// 检查最小数量
+	if quantity < info.MinQty {
+		return "", fmt.Errorf("数量 (%.8f) 小于最小允许数量 (%.8f)", quantity, info.MinQty)
+	}
+
+	// 检查最小名义价值 (notional value)
+	currentPrice, err := t.GetMarketPrice(symbol)
+	if err != nil {
+		return "", fmt.Errorf("获取当前价格失败: %w", err)
+	}
+	if quantity*currentPrice < info.MinNotional {
+		return "", fmt.Errorf("名义价值 (%.2f) 小于最小允许名义价值 (%.2f)", quantity*currentPrice, info.MinNotional)
+	}
+
+	format := fmt.Sprintf("%%.%df", info.Precision)
 	return fmt.Sprintf(format, quantity), nil
 }
 
@@ -712,12 +764,16 @@ func (t *FuturesTrader) processFilledOrder(orderID int64, symbol string) {
 
 // startUserDataStream 启动用户数据WebSocket流
 func (t *FuturesTrader) startUserDataStream() {
+	// 记录公网IP
+	logPublicIP()
+
 	// 1. 获取ListenKey
 	listenKey, err := t.client.NewStartUserStreamService().Do(context.Background())
 	if err != nil {
 		log.Printf("❌ WEBSOCKET错误：获取listenKey失败: %v", err)
 		return
 	}
+	t.listenKey = listenKey // 保存listenKey
 	log.Println("✓ WEBSOCKET：获取ListenKey成功")
 
 	// 2. 定期延长ListenKey有效期 (每30分钟)
@@ -768,4 +824,36 @@ func (t *FuturesTrader) startUserDataStream() {
 	log.Println("✓ WEBSOCKET：用户数据流已连接，正在监听账户事件...")
 	<-doneC
 	log.Println("WEBSOCKET：用户数据流已断开")
+}
+
+// logPublicIP 获取并记录公网IP地址
+func logPublicIP() {
+	resp, err := http.Get("http://myexternalip.com/raw")
+	if err != nil {
+		log.Printf("❌ 获取公网IP失败: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	ip, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("❌ 读取IP响应失败: %v", err)
+		return
+	}
+
+	log.Printf("ℹ️ 当前公网IP地址: %s", string(ip))
+}
+
+// Stop closes the user data stream.
+func (t *FuturesTrader) Stop() {
+	if t.listenKey == "" {
+		return
+	}
+	log.Println("ℹ️ 正在关闭币安用户数据流...")
+	err := t.client.NewCloseUserStreamService().ListenKey(t.listenKey).Do(context.Background())
+	if err != nil {
+		log.Printf("❌ 关闭币安用户数据流失败: %v", err)
+		return
+	}
+	log.Println("✓ 币安用户数据流已关闭")
 }

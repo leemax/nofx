@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/sonirico/go-hyperliquid"
@@ -185,6 +186,11 @@ func (t *HyperliquidTrader) GetPositions() ([]map[string]interface{}, error) {
 	}
 
 	return result, nil
+}
+
+// GetServerTime 获取服务器时间 (使用本地UTC时间作为备用)
+func (t *HyperliquidTrader) GetServerTime() (time.Time, error) {
+	return time.Now().UTC(), nil
 }
 
 // SetLeverage 设置杠杆
@@ -679,3 +685,6 @@ func absFloat(x float64) float64 {
 	}
 	return x
 }
+
+// Stop satisfies the Trader interface, but does nothing for Hyperliquid as there is no persistent connection.
+func (t *HyperliquidTrader) Stop() {}

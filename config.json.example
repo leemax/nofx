@@ -53,6 +53,34 @@
       "scan_interval_minutes": 3
     },
     {
+      "id": "binance_gemini",
+      "name": "Binance Gemini Trader",
+      "enabled": false,
+      "ai_model": "gemini",
+      "exchange": "binance",
+      "binance_api_key": "your_binance_api_key",
+      "binance_secret_key": "your_binance_secret_key",
+      "gemini_api_key": "your_gemini_api_key",
+      "gemini_model": "gemini-2.5-pro",
+      "initial_balance": 1000,
+      "scan_interval_minutes": 3
+    },
+    {
+      "id": "binance_gemini_eth_focused",
+      "name": "Binance Gemini ETH Focused Trader",
+      "enabled": true,
+      "ai_model": "gemini",
+      "exchange": "binance",
+      "binance_api_key": "your_binance_api_key",
+      "binance_secret_key": "your_binance_secret_key",
+      "gemini_api_key": "your_gemini_api_key",
+      "gemini_model": "gemini-2.5-pro",
+      "initial_balance": 1000,
+      "scan_interval_minutes": 3,
+      "prompt_name": "Grok-Master-ETH-Focused",
+      "symbols_to_ai": ["ETHUSDT", "BTCUSDT"]
+    },
+    {
       "id": "aster_deepseek",
       "name": "Aster DeepSeek Trader",
       "enabled": true,

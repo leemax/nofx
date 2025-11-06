@@ -60,11 +60,13 @@ func main() {
 	}
 
 	// 创建TraderManager
-	traderManager := manager.NewTraderManager()
+	traderManager := manager.NewTraderManager(cfg)
 
 	// 添加所有启用的trader
 	enabledCount := 0
-	for i, traderCfg := range cfg.Traders {
+	for i := range cfg.Traders {
+		traderCfg := &cfg.Traders[i] // Get a pointer to the element
+
 		// 跳过未启用的trader
 		if !traderCfg.Enabled {
 			log.Printf("⏭️  [%d/%d] 跳过未启用的 %s", i+1, len(cfg.Traders), traderCfg.Name)
@@ -75,15 +77,7 @@ func main() {
 		log.Printf("📦 [%d/%d] 初始化 %s (%s模型)...",
 			i+1, len(cfg.Traders), traderCfg.Name, strings.ToUpper(traderCfg.AIModel))
 
-		err := traderManager.AddTrader(
-			traderCfg,
-			cfg.CoinPoolAPIURL,
-			cfg.MaxDailyLoss,
-			cfg.MaxDrawdown,
-			cfg.StopTradingMinutes,
-			cfg.Leverage, // 传递杠杆配置
-			cfg.DefaultPrompt, // 传递默认提示词
-		)
+		err := traderManager.AddTrader(traderCfg.ID)
 		if err != nil {
 			log.Fatalf("❌ 初始化trader失败: %v", err)
 		}

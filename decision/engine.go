@@ -67,12 +67,13 @@ type Context struct {
 	Performance     *PerformanceAnalysis `json:"-"` // 历史表现分析
 	BTCETHLeverage  int                     `json:"-"` // BTC/ETH杠杆倍数（从配置读取）
 	AltcoinLeverage int                     `json:"-"` // 山寨币杠杆倍数（从配置读取）
+	ConfiguredSymbolsToAI []string          `json:"-"` // New field: Symbols configured to be sent to AI
 }
 
 // Decision AI的交易决策
 type Decision struct {
 	Symbol          string  `json:"symbol"`
-	Action          string  `json:"action"` // "open_long", "open_short", "close_long", "close_short", "hold", "wait", "move_sl_to_breakeven"
+	Action          string  `json:"action"` // "open_long", "open_short", "close_long", "close_short", "partial_close_long", "partial_close_short", "hold", "wait", "move_sl_to_breakeven"
 	Leverage        int     `json:"leverage,omitempty"`
 	PositionSizeUSD float64 `json:"position_size_usd,omitempty"`
 	StopLoss        float64 `json:"stop_loss,omitempty"`
@@ -98,6 +99,21 @@ func GetFullDecision(ctx *Context, mcpClient *mcp.Client, customPrompt string, o
 	if err := fetchMarketDataForContext(ctx); err != nil {
 		return nil, fmt.Errorf("获取市场数据失败: %w", err)
 	}
+
+	// ADDED LOGGING: Verify ctx.MarketDataMap content
+	log.Printf("✅ ctx.MarketDataMap 包含 %d 个币种的市场数据。", len(ctx.MarketDataMap))
+	for symbol, data := range ctx.MarketDataMap {
+		adx := 0.0
+		if data.FourHourContext != nil {
+			adx = data.FourHourContext.ADX14
+		}
+		currentPrice := 0.0
+		if data != nil {
+			currentPrice = data.CurrentPrice
+		}
+		log.Printf("   - %s: CurrentPrice=%.2f, 4H_ADX_14=%.2f", symbol, currentPrice, adx)
+	}
+
 
 	// 2. 构建 System Prompt（固定规则）和 User Prompt（动态数据）
 	systemPrompt, err := buildSystemPrompt(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage, systemPromptTemplate, customPrompt, overrideBasePrompt, promptName)
@@ -161,31 +177,44 @@ func fetchMarketDataForContext(ctx *Context) error {
 	// 收集所有需要获取数据的币种
 	symbolSet := make(map[string]bool)
 
-	// 1. 优先获取持仓币种的数据（这是必须的）
+	log.Printf("ℹ️ ctx.ConfiguredSymbolsToAI: %v", ctx.ConfiguredSymbolsToAI)
+
+	// Use configured symbols for AI
+	for _, symbol := range ctx.ConfiguredSymbolsToAI {
+		symbolSet[symbol] = true
+	}
+
+	log.Printf("ℹ️ symbolSet after configured symbols: %v", symbolSet)
+
+	// Also ensure existing positions are included if they are in the configured symbols
 	for _, pos := range ctx.Positions {
-		symbolSet[pos.Symbol] = true
-	}
-
-	// 2. 候选币种数量根据账户状态动态调整
-	maxCandidates := calculateMaxCandidates(ctx)
-	for i, coin := range ctx.CandidateCoins {
-		if i >= maxCandidates {
-			break
+		if _, ok := symbolSet[pos.Symbol]; ok { // Check if the symbol is already in the configured set
+			symbolSet[pos.Symbol] = true // Ensure it's marked as true
 		}
-		symbolSet[coin.Symbol] = true
 	}
 
-	// 并发获取市场数据
+	log.Printf("ℹ️ symbolSet after existing positions: %v", symbolSet)
+
 	// 持仓币种集合（用于判断是否跳过OI检查）
 	positionSymbols := make(map[string]bool)
 	for _, pos := range ctx.Positions {
 		positionSymbols[pos.Symbol] = true
 	}
 
+	// 2. 候选币种数量根据账户状态动态调整 (不再从这里添加，因为我们只关注配置的币种)
+	// maxCandidates := calculateMaxCandidates(ctx)
+	// for i, coin := range ctx.CandidateCoins {
+	// 	if i >= maxCandidates {
+	// 		break
+	// 	}
+	// 	symbolSet[coin.Symbol] = true
+	// }
+
+	fetchedCount := 0 // Initialize fetchedCount
 	for symbol := range symbolSet {
 		data, err := market.Get(symbol)
 		if err != nil {
-			// 单个币种失败不影响整体，只记录错误
+			log.Printf("❌ 获取 %s 市场数据失败: %v", symbol, err)
 			continue
 		}
 
@@ -205,6 +234,11 @@ func fetchMarketDataForContext(ctx *Context) error {
 		}
 
 		ctx.MarketDataMap[symbol] = data
+		fetchedCount++ // Increment fetchedCount
+	}
+
+	if fetchedCount == 0 && len(symbolSet) > 0 {
+		return fmt.Errorf("未能获取任何配置币种的市场数据")
 	}
 
 	// 加载OI Top数据（不影响主流程）
@@ -270,10 +304,10 @@ func buildUserPrompt(ctx *Context) string {
 		ctx.CurrentTime, ctx.CallCount, ctx.RuntimeMinutes))
 
 	// BTC 市场
-	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC && btcData.IntradaySeries != nil {
-		sb.WriteString(fmt.Sprintf("**BTC**: %.2f (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f\n\n",
+	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC && btcData.OneHourContext != nil && btcData.IntradaySeries != nil {
+		sb.WriteString(fmt.Sprintf("**BTC**: %.2f (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f | 1H_EMA_50: %.4f\n\n",
 			btcData.CurrentPrice, btcData.PriceChange1h, btcData.PriceChange4h,
-			btcData.IntradaySeries.CurrentMACD, btcData.IntradaySeries.CurrentRSI7))
+			btcData.IntradaySeries.CurrentMACD, btcData.IntradaySeries.CurrentRSI7, btcData.OneHourContext.EMA50))
 	}
 
 	// 账户
@@ -492,6 +526,8 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 		"open_short":            true,
 		"close_long":            true,
 		"close_short":           true,
+		"partial_close_long":    true,
+		"partial_close_short":   true,
 		"hold":                  true,
 		"wait":                  true,
 		"move_sl_to_breakeven":  true,
@@ -516,6 +552,9 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 		}
 		if d.PositionSizeUSD <= 0 {
 			return fmt.Errorf("仓位大小必须大于0: %.2f", d.PositionSizeUSD)
+		}
+		if d.PositionSizeUSD < 20 {
+			return fmt.Errorf("仓位价值必须不小于20 USDT: %.2f", d.PositionSizeUSD)
 		}
 		// 验证仓位价值上限（加1%容差以避免浮点数精度问题）
 		tolerance := maxPositionValue * 0.01 // 1%容差
@@ -548,6 +587,23 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 		}
 		currentMarketPrice := marketData.CurrentPrice
 
+		// 验证止损止盈的合理性
+		if d.Action == "open_long" {
+			if d.StopLoss >= currentMarketPrice {
+				return fmt.Errorf("做多时止损价(%.4f)必须小于当前市场价(%.4f)", d.StopLoss, currentMarketPrice)
+			}
+			if d.TakeProfit <= currentMarketPrice {
+				return fmt.Errorf("做多时止盈价(%.4f)必须大于当前市场价(%.4f)", d.TakeProfit, currentMarketPrice)
+			}
+		} else { // open_short
+			if d.StopLoss <= currentMarketPrice {
+				return fmt.Errorf("做空时止损价(%.4f)必须大于当前市场价(%.4f)", d.StopLoss, currentMarketPrice)
+			}
+			if d.TakeProfit >= currentMarketPrice {
+				return fmt.Errorf("做空时止盈价(%.4f)必须小于当前市场价(%.4f)", d.TakeProfit, currentMarketPrice)
+			}
+		}
+
 		if d.Action == "open_long" {
 			riskPercent = (currentMarketPrice - d.StopLoss) / currentMarketPrice * 100
 			rewardPercent = (d.TakeProfit - currentMarketPrice) / currentMarketPrice * 100
@@ -562,9 +618,9 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 			}
 		}
 
-		// 硬约束：风险回报比必须≥3.0
-		if riskRewardRatio < 3.0 {
-			return fmt.Errorf("风险回报比过低(%.2f:1)，必须≥3.0:1 [风险:%.2f%% 收益:%.2f%%] [止损:%.2f 止盈:%.2f]",
+		// 硬约束：风险回报比必须≥1.9
+		if riskRewardRatio < 1.9 {
+			return fmt.Errorf("风险回报比过低(%.2f:1)，必须≥1.9:1 [风险:%.2f%% 收益:%.2f%%] [止损:%.2f 止盈:%.2f]",
 				riskRewardRatio, riskPercent, rewardPercent, d.StopLoss, d.TakeProfit)
 		}
 	} else if d.Action == "move_sl_to_breakeven" {

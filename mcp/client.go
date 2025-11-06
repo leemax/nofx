@@ -17,6 +17,7 @@ const (
 	ProviderDeepSeek Provider = "deepseek"
 	ProviderQwen     Provider = "qwen"
 	ProviderCustom   Provider = "custom"
+	ProviderGemini   Provider = "gemini"
 )
 
 // Client AI API配置
@@ -28,6 +29,9 @@ type Client struct {
 	Model      string
 	Timeout    time.Duration
 	UseFullURL bool // 是否使用完整URL（不添加/chat/completions）
+
+	GeminiAPIKey string // Gemini API Key
+	GeminiModel  string // Gemini Model Name
 }
 
 func New() *Client {
@@ -55,7 +59,7 @@ func (cfg *Client) SetQwenAPIKey(apiKey, secretKey string) {
 	cfg.APIKey = apiKey
 	cfg.SecretKey = secretKey
 	cfg.BaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-	cfg.Model = "qwen-plus" // 可选: qwen-turbo, qwen-plus, qwen-max
+	cfg.Model = "qwen-max" // 可选: qwen-turbo, qwen-plus, qwen-max
 }
 
 // SetCustomAPI 设置自定义OpenAI兼容API
@@ -76,6 +80,14 @@ func (cfg *Client) SetCustomAPI(apiURL, apiKey, modelName string) {
 	cfg.Timeout = 120 * time.Second
 }
 
+// SetGeminiAPIKey 设置Gemini API密钥
+func (cfg *Client) SetGeminiAPIKey(apiKey, modelName string) {
+	cfg.Provider = ProviderGemini
+	cfg.GeminiAPIKey = apiKey
+	cfg.GeminiModel = modelName
+	cfg.Timeout = 120 * time.Second
+}
+
 // SetClient 设置完整的AI配置（高级用户）
 func (cfg *Client) SetClient(Client Client) {
 	if Client.Timeout == 0 {
@@ -84,10 +96,102 @@ func (cfg *Client) SetClient(Client Client) {
 	cfg = &Client
 }
 
+// callGeminiOnce 单次调用Gemini AI API（内部使用）
+func (cfg *Client) callGeminiOnce(systemPrompt, userPrompt string) (string, error) {
+	if cfg.GeminiAPIKey == "" {
+		return "", fmt.Errorf("Gemini API密钥未设置")
+	}
+	if cfg.GeminiModel == "" {
+		return "", fmt.Errorf("Gemini模型名称未设置")
+	}
+
+	// 构建 messages 数组
+	var parts []map[string]string
+
+	// 如果有 system prompt，添加 system message
+	if systemPrompt != "" {
+		parts = append(parts, map[string]string{
+			"text": systemPrompt,
+		})
+	}
+
+	// 添加 user message
+	parts = append(parts, map[string]string{
+		"text": userPrompt,
+	})
+
+	// 构建请求体
+	requestBody := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"role":  "user",
+				"parts": parts,
+			},
+		},
+		"generationConfig": map[string]interface{}{
+			"temperature": 0.5,
+			"maxOutputTokens": 8192,
+		},
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("序列化Gemini请求失败: %w", err)
+	}
+
+	// 创建HTTP请求
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", cfg.GeminiModel, cfg.GeminiAPIKey)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("创建Gemini请求失败: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// 发送请求
+	client := &http.Client{Timeout: cfg.Timeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("发送Gemini请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 读取响应
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取Gemini响应失败: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Gemini API返回错误 (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	// 解析响应
+	var result struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("解析Gemini响应失败: %w", err)
+	}
+
+	if len(result.Candidates) == 0 || len(result.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("Gemini API返回空响应")
+	}
+
+	return result.Candidates[0].Content.Parts[0].Text, nil
+}
+
 // CallWithMessages 使用 system + user prompt 调用AI API（推荐）
 func (cfg *Client) CallWithMessages(systemPrompt, userPrompt string) (string, error) {
-	if cfg.APIKey == "" {
-		return "", fmt.Errorf("AI API密钥未设置，请先调用 SetDeepSeekAPIKey() 或 SetQwenAPIKey()")
+	if cfg.APIKey == "" && cfg.GeminiAPIKey == "" {
+		return "", fmt.Errorf("AI API密钥未设置，请先调用 SetDeepSeekAPIKey() 或 SetQwenAPIKey() 或 SetGeminiAPIKey()")
 	}
 
 	// 重试配置
@@ -99,7 +203,16 @@ func (cfg *Client) CallWithMessages(systemPrompt, userPrompt string) (string, er
 			fmt.Printf("⚠️  AI API调用失败，正在重试 (%d/%d)...\n", attempt, maxRetries)
 		}
 
-		result, err := cfg.callOnce(systemPrompt, userPrompt)
+		var result string
+		var err error
+
+		switch cfg.Provider {
+		case ProviderGemini:
+			result, err = cfg.callGeminiOnce(systemPrompt, userPrompt)
+		default:
+			result, err = cfg.callOnce(systemPrompt, userPrompt)
+		}
+
 		if err == nil {
 			if attempt > 1 {
 				fmt.Printf("✓ AI API重试成功\n")

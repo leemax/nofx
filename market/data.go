@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -121,19 +122,44 @@ func Get(symbol string) (*Data, error) {
 	wg.Wait()
 
 	if err3m != nil {
+		log.Printf("❌ 获取3分钟K线失败 for %s: %v", symbol, err3m)
 		return nil, fmt.Errorf("获取3分钟K线失败: %v", err3m)
 	}
+	if len(klines3m) == 0 {
+		log.Printf("❌ 获取3分钟K线数据为空 for %s", symbol)
+		return nil, fmt.Errorf("获取3分钟K线数据为空")
+	}
 	if err15m != nil {
+		log.Printf("❌ 获取15分钟K线失败 for %s: %v", symbol, err15m)
 		return nil, fmt.Errorf("获取15分钟K线失败: %v", err15m)
 	}
+	if len(klines15m) == 0 {
+		log.Printf("❌ 获取15分钟K线数据为空 for %s", symbol)
+		return nil, fmt.Errorf("获取15分钟K线数据为空")
+	}
 	if err1h != nil {
+		log.Printf("❌ 获取1小时K线失败 for %s: %v", symbol, err1h)
 		return nil, fmt.Errorf("获取1小时K线失败: %v", err1h)
 	}
+	if len(klines1h) == 0 {
+		log.Printf("❌ 获取1小时K线数据为空 for %s", symbol)
+		return nil, fmt.Errorf("获取1小时K线数据为空")
+	}
 	if err4h != nil {
+		log.Printf("❌ 获取4小时K线失败 for %s: %v", symbol, err4h)
 		return nil, fmt.Errorf("获取4小时K线失败: %v", err4h)
 	}
+	if len(klines4h) == 0 {
+		log.Printf("❌ 获取4小时K线数据为空 for %s", symbol)
+		return nil, fmt.Errorf("获取4小时K线数据为空")
+	}
 	if err1d != nil {
+		log.Printf("❌ 获取日线K线失败 for %s: %v", symbol, err1d)
 		return nil, fmt.Errorf("获取日线K线失败: %v", err1d)
+	}
+	if len(klines1d) == 0 {
+		log.Printf("❌ 获取日线K线数据为空 for %s", symbol)
+		return nil, fmt.Errorf("获取日线K线数据为空")
 	}
 
 	// 计算当前价格
@@ -209,20 +235,31 @@ func getKlines(symbol, interval string, limit int) ([]Kline, error) {
 	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/klines?symbol=%s&interval=%s&limit=%d",
 		symbol, interval, limit)
 
+	log.Printf("ℹ️ 请求Binance K线数据: %s", url)
+
 	resp, err := http.Get(url)
 	if err != nil {
+		log.Printf("❌ 请求Binance K线数据失败 (%s, %s): %v", symbol, interval, err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		log.Printf("❌ 读取Binance K线响应失败 (%s, %s): %v", symbol, interval, err)
 		return nil, err
 	}
 
+	log.Printf("ℹ️ Binance K线数据原始响应 (%s, %s): %s", symbol, interval, string(body))
+
 	var rawData [][]interface{}
 	if err := json.Unmarshal(body, &rawData); err != nil {
+		log.Printf("❌ 解析Binance K线响应失败 (%s, %s): %v", symbol, interval, err)
 		return nil, err
+	}
+
+	if len(rawData) == 0 {
+		log.Printf("⚠️  Binance K线数据响应为空 (%s, %s)", symbol, interval)
 	}
 
 	klines := make([]Kline, len(rawData))

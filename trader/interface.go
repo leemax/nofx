@@ -1,5 +1,9 @@
 package trader
 
+import (
+	"time"
+)
+
 // Trader 交易器统一接口
 // 支持多个交易平台（币安、Hyperliquid等）
 type Trader interface {
@@ -38,4 +42,10 @@ type Trader interface {
 
 	// FormatQuantity 格式化数量到正确的精度
 	FormatQuantity(symbol string, quantity float64) (string, error)
+
+	// GetServerTime 获取服务器时间
+	GetServerTime() (time.Time, error)
+
+	// Stop 停止交易器（例如，关闭WebSocket连接）
+	Stop()
 }

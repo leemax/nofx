@@ -819,6 +819,11 @@ func (t *AsterTrader) CloseShort(symbol string, quantity float64) (map[string]in
 	return result, nil
 }
 
+// GetServerTime 获取服务器时间 (使用本地UTC时间作为备用)
+func (t *AsterTrader) GetServerTime() (time.Time, error) {
+	return time.Now().UTC(), nil
+}
+
 // SetLeverage 设置杠杆倍数
 func (t *AsterTrader) SetLeverage(symbol string, leverage int) error {
 	params := map[string]interface{}{
@@ -957,3 +962,6 @@ func (t *AsterTrader) FormatQuantity(symbol string, quantity float64) (string, e
 	}
 	return fmt.Sprintf("%v", formatted), nil
 }
+
+// Stop satisfies the Trader interface, but does nothing for Aster as there is no persistent connection.
+func (t *AsterTrader) Stop() {}

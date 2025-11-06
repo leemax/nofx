@@ -12,20 +12,36 @@ import (
 // TraderManager 管理多个trader实例
 type TraderManager struct {
 	traders map[string]*trader.AutoTrader // key: trader ID
+	config  *config.Config                // Store the global config
 	mu      sync.RWMutex
 }
 
 // NewTraderManager 创建trader管理器
-func NewTraderManager() *TraderManager {
+func NewTraderManager(cfg *config.Config) *TraderManager {
 	return &TraderManager{
 		traders: make(map[string]*trader.AutoTrader),
+		config:  cfg,
 	}
 }
 
 // AddTrader 添加一个trader
-func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, maxDailyLoss, maxDrawdown float64, stopTradingMinutes int, leverage config.LeverageConfig, promptName string) error {
+func (tm *TraderManager) AddTrader(traderID string) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
+
+	var cfg config.TraderConfig
+	found := false
+	for _, tCfg := range tm.config.Traders {
+		if tCfg.ID == traderID {
+			cfg = tCfg
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("trader ID '%s' not found in config", traderID)
+	}
 
 	if _, exists := tm.traders[cfg.ID]; exists {
 		return fmt.Errorf("trader ID '%s' 已存在", cfg.ID)
@@ -45,25 +61,27 @@ func (tm *TraderManager) AddTrader(cfg config.TraderConfig, coinPoolURL string, 
 		AsterUser:             cfg.AsterUser,
 		AsterSigner:           cfg.AsterSigner,
 		AsterPrivateKey:       cfg.AsterPrivateKey,
-		CoinPoolAPIURL:        coinPoolURL,
-		UseQwen:               cfg.AIModel == "qwen",
+		CoinPoolAPIURL:        tm.config.CoinPoolAPIURL,
 		DeepSeekKey:           cfg.DeepSeekKey,
 		QwenKey:               cfg.QwenKey,
+		GeminiAPIKey:          cfg.GeminiAPIKey,
+		GeminiModel:           cfg.GeminiModel,
 		CustomAPIURL:          cfg.CustomAPIURL,
 		CustomAPIKey:          cfg.CustomAPIKey,
 		CustomModelName:       cfg.CustomModelName,
 		ScanInterval:          cfg.GetScanInterval(),
 		InitialBalance:        cfg.InitialBalance,
-		BTCETHLeverage:        leverage.BTCETHLeverage,  // 使用配置的杠杆倍数
-		AltcoinLeverage:       leverage.AltcoinLeverage, // 使用配置的杠杆倍数
-		MaxDailyLoss:          maxDailyLoss,
-		MaxDrawdown:           maxDrawdown,
-		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
-		PromptName:            promptName, // 设置提示词名称
+		BTCETHLeverage:        tm.config.Leverage.BTCETHLeverage,  // 使用配置的杠杆倍数
+		AltcoinLeverage:       tm.config.Leverage.AltcoinLeverage, // 使用配置的杠杆倍数
+		MaxDailyLoss:          tm.config.MaxDailyLoss,
+		MaxDrawdown:           tm.config.MaxDrawdown,
+		StopTradingTime:       time.Duration(tm.config.StopTradingMinutes) * time.Minute,
+		PromptName:            tm.config.DefaultPrompt, // 设置提示词名称
+		SymbolsToAI:           cfg.SymbolsToAI, // Pass SymbolsToAI from the specific trader config
 	}
 
 	// 创建trader实例
-	at, err := trader.NewAutoTrader(traderConfig)
+	at, err := trader.NewAutoTrader(&traderConfig)
 	if err != nil {
 		return fmt.Errorf("创建trader失败: %w", err)
 	}

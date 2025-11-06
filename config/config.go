@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"time"
 )
@@ -35,10 +36,16 @@ type TraderConfig struct {
 	QwenKey     string `json:"qwen_key,omitempty"`
 	DeepSeekKey string `json:"deepseek_key,omitempty"`
 
+	// Gemini AI配置
+	GeminiAPIKey string `json:"gemini_api_key,omitempty"`
+	GeminiModel  string `json:"gemini_model,omitempty"`
+
 	// 自定义AI API配置（支持任何OpenAI格式的API）
 	CustomAPIURL    string `json:"custom_api_url,omitempty"`
 	CustomAPIKey    string `json:"custom_api_key,omitempty"`
 	CustomModelName string `json:"custom_model_name,omitempty"`
+
+	SymbolsToAI []string `json:"symbols_to_ai,omitempty"` // New field
 
 	InitialBalance      float64 `json:"initial_balance"`
 	ScanIntervalMinutes int     `json:"scan_interval_minutes"`
@@ -85,6 +92,8 @@ func LoadConfig(filename string) (*Config, error) {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
 
+	log.Printf("ℹ️ Config after Unmarshal: %+v", config)
+
 	// 设置默认值：如果use_default_coins未设置（为false）且没有配置coin_pool_api_url，则默认使用默认币种列表
 	if !config.UseDefaultCoins && config.CoinPoolAPIURL == "" {
 		config.UseDefaultCoins = true
@@ -109,6 +118,8 @@ func LoadConfig(filename string) (*Config, error) {
 		return nil, fmt.Errorf("配置验证失败: %w", err)
 	}
 
+	log.Printf("ℹ️ Config after Validate: %+v", config)
+
 	return &config, nil
 }
 
@@ -119,7 +130,9 @@ func (c *Config) Validate() error {
 	}
 
 	traderIDs := make(map[string]bool)
-	for i, trader := range c.Traders {
+	for i := range c.Traders {
+		trader := &c.Traders[i] // Get a pointer to the element in the slice
+
 		if trader.ID == "" {
 			return fmt.Errorf("trader[%d]: ID不能为空", i)
 		}
@@ -131,8 +144,9 @@ func (c *Config) Validate() error {
 		if trader.Name == "" {
 			return fmt.Errorf("trader[%d]: Name不能为空", i)
 		}
-		if trader.AIModel != "qwen" && trader.AIModel != "deepseek" && trader.AIModel != "custom" {
-			return fmt.Errorf("trader[%d]: ai_model必须是 'qwen', 'deepseek' 或 'custom'", i)
+
+		if trader.AIModel != "qwen" && trader.AIModel != "deepseek" && trader.AIModel != "custom" && trader.AIModel != "gemini" {
+			return fmt.Errorf("trader[%d]: ai_model必须是 'qwen', 'deepseek', 'custom' 或 'gemini'", i)
 		}
 
 		// 验证交易平台配置
@@ -158,11 +172,20 @@ func (c *Config) Validate() error {
 			}
 		}
 
+		// AI模型配置验证
 		if trader.AIModel == "qwen" && trader.QwenKey == "" {
 			return fmt.Errorf("trader[%d]: 使用Qwen时必须配置qwen_key", i)
 		}
 		if trader.AIModel == "deepseek" && trader.DeepSeekKey == "" {
 			return fmt.Errorf("trader[%d]: 使用DeepSeek时必须配置deepseek_key", i)
+		}
+		if trader.AIModel == "gemini" {
+			if trader.GeminiAPIKey == "" {
+				return fmt.Errorf("trader[%d]: 使用Gemini时必须配置gemini_api_key", i)
+			}
+			if trader.GeminiModel == "" {
+				return fmt.Errorf("trader[%d]: 使用Gemini时必须配置gemini_model", i)
+			}
 		}
 		if trader.AIModel == "custom" {
 			if trader.CustomAPIURL == "" {
@@ -180,6 +203,11 @@ func (c *Config) Validate() error {
 		}
 		if trader.ScanIntervalMinutes <= 0 {
 			trader.ScanIntervalMinutes = 3 // 默认3分钟
+		}
+
+		// Set default for SymbolsToAI if not provided
+		if len(trader.SymbolsToAI) == 0 {
+			trader.SymbolsToAI = []string{"ETHUSDT", "BTCUSDT"}
 		}
 	}
 

@@ -1,0 +1,3 @@
+--- Export of trades table from /Users/lichungang/nofx/nofx.db (Time range: 2025-11-05 23:57:32 to 2025-11-06 07:58:43) ---
+
+No trades found in this time range.

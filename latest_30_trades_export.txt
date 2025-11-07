@@ -1,0 +1,452 @@
+--- Export of latest 30 trades from /Users/lichungang/nofx/nofx.db ---
+
+--- Trade ID: 2873020023 ---
+trade_id: 2873020023
+order_id: 168147635272
+trader_id: binance_qwen
+symbol: SOLUSDT
+price: 156.4
+quantity: 0.86
+commission: 0.067252
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 15:53:53.03+08:00
+
+================================================================================
+
+--- Trade ID: 6714249890 ---
+trade_id: 6714249890
+order_id: 8389766007337254258
+trader_id: binance_deepseek
+symbol: ETHUSDT
+price: 3329.9
+quantity: 0.04
+commission: 0.066598
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 15:51:16.353+08:00
+
+================================================================================
+
+--- Trade ID: 2872961400 ---
+trade_id: 2872961400
+order_id: 168138012123
+trader_id: binance_deepseek
+symbol: SOLUSDT
+price: 156.3
+quantity: 0.86
+commission: 0.067209
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 15:24:23.556+08:00
+
+================================================================================
+
+--- Trade ID: 6714144800 ---
+trade_id: 6714144800
+order_id: 8389766007315673703
+trader_id: binance_qwen
+symbol: ETHUSDT
+price: 3314.31
+quantity: 0.005
+commission: 0.00828577
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 15:24:15.52+08:00
+
+================================================================================
+
+--- Trade ID: 6714144801 ---
+trade_id: 6714144801
+order_id: 8389766007315673703
+trader_id: binance_qwen
+symbol: ETHUSDT
+price: 3314.31
+quantity: 0.035
+commission: 0.05800042
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 15:24:15.52+08:00
+
+================================================================================
+
+--- Trade ID: 191759154 ---
+trade_id: 191759154
+order_id: 3380218192
+trader_id: binance_qwen
+symbol: HYPEUSDT
+price: 40.447
+quantity: 3.29
+commission: 0.06653531
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 15:22:12.06+08:00
+
+================================================================================
+
+--- Trade ID: 191743685 ---
+trade_id: 191743685
+order_id: 3380218115
+trader_id: binance_deepseek
+symbol: HYPEUSDT
+price: 40.795
+quantity: 0.71
+commission: 0.01448222
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 15:06:12.496+08:00
+
+================================================================================
+
+--- Trade ID: 191743686 ---
+trade_id: 191743686
+order_id: 3380218115
+trader_id: binance_qwen
+symbol: HYPEUSDT
+price: 40.795
+quantity: 0.51
+commission: 0.01040272
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 15:06:12.496+08:00
+
+================================================================================
+
+--- Trade ID: 191743687 ---
+trade_id: 191743687
+order_id: 3380218115
+trader_id: binance_qwen
+symbol: HYPEUSDT
+price: 40.795
+quantity: 2.07
+commission: 0.04222282
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 15:06:12.496+08:00
+
+================================================================================
+
+--- Trade ID: 2872615987 ---
+trade_id: 2872615987
+order_id: 168090882287
+trader_id: binance_qwen
+symbol: SOLUSDT
+price: 157.23
+quantity: 1.28
+commission: 0.1006272
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 13:06:54.828+08:00
+
+================================================================================
+
+--- Trade ID: 2872595231 ---
+trade_id: 2872595231
+order_id: 168087364722
+trader_id: binance_qwen
+symbol: SOLUSDT
+price: 156.77
+quantity: 1.28
+commission: 0.1003328
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 12:56:32.775+08:00
+
+================================================================================
+
+--- Trade ID: 6825862648 ---
+trade_id: 6825862648
+order_id: 810443125227
+trader_id: binance_deepseek
+symbol: BTCUSDT
+price: 102099.8
+quantity: 0.002
+commission: 0.1020998
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 12:50:00.203+08:00
+
+================================================================================
+
+--- Trade ID: 2872564251 ---
+trade_id: 2872564251
+order_id: 168084248212
+trader_id: binance_deepseek
+symbol: SOLUSDT
+price: 157.5
+quantity: 2.55
+commission: 0.2008125
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 12:44:52.257+08:00
+
+================================================================================
+
+--- Trade ID: 6825834109 ---
+trade_id: 6825834109
+order_id: 810435065453
+trader_id: binance_qwen
+symbol: BTCUSDT
+price: 101864.6
+quantity: 0.002
+commission: 0.1018646
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 12:41:06.705+08:00
+
+================================================================================
+
+--- Trade ID: 2872543010 ---
+trade_id: 2872543010
+order_id: 168081460136
+trader_id: binance_qwen
+symbol: SOLUSDT
+price: 157.11
+quantity: 2.55
+commission: 0.20031525
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 12:38:18.889+08:00
+
+================================================================================
+
+--- Trade ID: 6825801771 ---
+trade_id: 6825801771
+order_id: 810427949773
+trader_id: binance_deepseek
+symbol: BTCUSDT
+price: 101642.4
+quantity: 0.001
+commission: 0.0508212
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 12:34:08.993+08:00
+
+================================================================================
+
+--- Trade ID: 6825801772 ---
+trade_id: 6825801772
+order_id: 810427949773
+trader_id: binance_deepseek
+symbol: BTCUSDT
+price: 101642.4
+quantity: 0.001
+commission: 0.0508212
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 12:34:08.993+08:00
+
+================================================================================
+
+--- Trade ID: 6825781569 ---
+trade_id: 6825781569
+order_id: 810423844860
+trader_id: binance_qwen
+symbol: BTCUSDT
+price: 101530.6
+quantity: 0.002
+commission: 0.1015306
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 12:29:21.944+08:00
+
+================================================================================
+
+--- Trade ID: 191527172 ---
+trade_id: 191527172
+order_id: 3376559544
+trader_id: binance_deepseek
+symbol: HYPEUSDT
+price: 39.993
+quantity: 4.99
+commission: 0.09978253
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 12:27:30.43+08:00
+
+================================================================================
+
+--- Trade ID: 191524386 ---
+trade_id: 191524386
+order_id: 3376559521
+trader_id: binance_deepseek
+symbol: HYPEUSDT
+price: 40.097
+quantity: 4.99
+commission: 0.10004201
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 12:26:27.462+08:00
+
+================================================================================
+
+--- Trade ID: 1917475096 ---
+trade_id: 1917475096
+order_id: 80244008679
+trader_id: binance_qwen
+symbol: BNBUSDT
+price: 944.28
+quantity: 0.19
+commission: 0.0897066
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 12:23:19.035+08:00
+
+================================================================================
+
+--- Trade ID: 191516132 ---
+trade_id: 191516132
+order_id: 3376424270
+trader_id: binance_qwen
+symbol: HYPEUSDT
+price: 40.104
+quantity: 3.16
+commission: 0.06336432
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 12:20:26.986+08:00
+
+================================================================================
+
+--- Trade ID: 191516133 ---
+trade_id: 191516133
+order_id: 3376424270
+trader_id: binance_qwen
+symbol: HYPEUSDT
+price: 40.104
+quantity: 1.79
+commission: 0.03589308
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 12:20:26.986+08:00
+
+================================================================================
+
+--- Trade ID: 6825715843 ---
+trade_id: 6825715843
+order_id: 810411314995
+trader_id: binance_deepseek
+symbol: BTCUSDT
+price: 101881.5
+quantity: 0.001
+commission: 0.05094075
+commission_asset: USDT
+is_buyer: 0
+is_maker: 0
+timestamp: 2025-11-05 12:14:14.672+08:00
+
+================================================================================
+
+--- Trade ID: 191502269 ---
+trade_id: 191502269
+order_id: 3376181753
+trader_id: binance_qwen
+symbol: HYPEUSDT
+price: 40.373
+quantity: 3.16
+commission: 0.06378934
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 12:11:23.869+08:00
+
+================================================================================
+
+--- Trade ID: 191502270 ---
+trade_id: 191502270
+order_id: 3376181753
+trader_id: binance_qwen
+symbol: HYPEUSDT
+price: 40.374
+quantity: 0.14
+commission: 0.00282618
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 12:11:23.869+08:00
+
+================================================================================
+
+--- Trade ID: 191502271 ---
+trade_id: 191502271
+order_id: 3376181753
+trader_id: binance_deepseek
+symbol: HYPEUSDT
+price: 40.375
+quantity: 0.51
+commission: 0.01029562
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 12:11:23.869+08:00
+
+================================================================================
+
+--- Trade ID: 191502272 ---
+trade_id: 191502272
+order_id: 3376181753
+trader_id: binance_qwen
+symbol: HYPEUSDT
+price: 40.375
+quantity: 0.41
+commission: 0.00827687
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 12:11:23.869+08:00
+
+================================================================================
+
+--- Trade ID: 191502273 ---
+trade_id: 191502273
+order_id: 3376181753
+trader_id: binance_deepseek
+symbol: HYPEUSDT
+price: 40.375
+quantity: 0.13
+commission: 0.00262437
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 12:11:23.869+08:00
+
+================================================================================
+
+--- Trade ID: 191502274 ---
+trade_id: 191502274
+order_id: 3376181753
+trader_id: binance_qwen
+symbol: HYPEUSDT
+price: 40.376
+quantity: 0.25
+commission: 0.005047
+commission_asset: USDT
+is_buyer: 1
+is_maker: 0
+timestamp: 2025-11-05 12:11:23.869+08:00
+
+================================================================================
+

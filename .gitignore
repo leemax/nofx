@@ -36,4 +36,4 @@ web/node_modules/
 node_modules/
 web/dist/
 web/.vite/
-nofx.db
+nofx.dbconfig.json

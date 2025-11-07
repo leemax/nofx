@@ -1,4 +1,4 @@
-const isDevelopment = import.meta.env.MODE === 'development';
+const isDevelopment = import.meta.env.VITE_NODE_ENV === 'development';
 
 export const logger = {
   log: (...args: any[]) => {

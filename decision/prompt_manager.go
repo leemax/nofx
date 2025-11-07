@@ -62,6 +62,8 @@ func (pm *PromptManager) LoadTemplates(dir string) error {
 		return fmt.Errorf("扫描提示词目录失败: %w", err)
 	}
 
+	log.Printf("Found %d files in %s: %v", len(files), dir, files)
+
 	if len(files) == 0 {
 		log.Printf("⚠️  提示词目录 %s 中没有找到 .txt 文件", dir)
 		return nil
@@ -115,6 +117,7 @@ func (pm *PromptManager) GetTemplate(name string) (*PromptTemplate, error) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
+	log.Printf("Available templates: %v", pm.GetAllTemplateNames())
 	template, exists := pm.templates[name]
 	if !exists {
 		return nil, fmt.Errorf("提示词模板不存在: %s", name)

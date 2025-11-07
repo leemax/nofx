@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import useSWR, { mutate } from 'swr';
+import useSWR from 'swr';
 import { api } from './lib/api';
 import { EquityChart } from './components/EquityChart';
 import { CompetitionPage } from './components/CompetitionPage';
 import AILearning from './components/AILearning';
+
 import { TraderStatusToggle } from './components/TraderStatusToggle';
+
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { t, type Language } from './i18n/translations';
 import type {
@@ -16,7 +18,7 @@ import type {
   TraderInfo,
   Prompt,
   PromptsResponse,
-} from './types';
+} from './types/index';
 
 type Page = 'competition' | 'trader';
 
@@ -131,7 +133,7 @@ function App() {
     }
   );
 
-  const { data: stats } = useSWR<Statistics>(
+  useSWR<Statistics>(
     currentPage === 'trader' && selectedTraderId
       ? `statistics-${selectedTraderId}`
       : null,
@@ -252,7 +254,11 @@ function App() {
               {currentPage === 'trader' && traders && traders.length > 0 && (
                 <select
                   value={selectedTraderId}
-                  onChange={(e) => setSelectedTraderId(e.target.value)}
+                  onChange={async (e) => {
+                    const newTraderId = e.target.value;
+                    setSelectedTraderId(newTraderId);
+                    await api.setDecisionMaker(newTraderId);
+                  }}
                   className="rounded px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium cursor-pointer transition-colors flex-1 sm:flex-initial"
                   style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
                 >
@@ -262,6 +268,23 @@ function App() {
                     </option>
                   ))}
                 </select>
+              )}
+
+              {currentPage === 'trader' && status && selectedTraderId && (
+                <TraderStatusToggle
+                  traderId={selectedTraderId}
+                  isRunning={status.is_running}
+                  onToggle={async (newStatus) => {
+                    if (selectedTraderId) {
+                      // Optimistically update the UI
+                      if (status) {
+                        status.is_running = newStatus;
+                      }
+                      // Revalidate the status data after the toggle action
+                      await api.startTrader(selectedTraderId);
+                    }
+                  }}
+                />
               )}
 
               {/* Prompt Selector (only show on trader page) */}
@@ -284,7 +307,7 @@ function App() {
                   className="rounded px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium cursor-pointer transition-colors flex-1 sm:flex-initial min-w-48"
                   style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
                 >
-                  {prompts.map((prompt) => (
+                  {prompts.map((prompt: Prompt) => (
                     <option key={prompt.id} value={prompt.id}>
                       {prompt.id}
                     </option>
@@ -292,22 +315,7 @@ function App() {
                 </select>
               )}
 
-              {currentPage === 'trader' && status && selectedTraderId && (
-                <TraderStatusToggle
-                  traderId={selectedTraderId}
-                  isRunning={status.is_running}
-                  onToggle={async (newStatus) => {
-                    if (selectedTraderId) {
-                      // Optimistically update the UI
-                      if (status) {
-                        status.is_running = newStatus;
-                      }
-                      // Revalidate the status data after the toggle action
-                      await mutate(`status-${selectedTraderId}`);
-                    }
-                  }}
-                />
-              )}
+
 
               {/* Force Decision Button (only show on trader page) */}
               {currentPage === 'trader' && (
@@ -340,7 +348,6 @@ function App() {
             account={account}
             positions={positions}
             decisions={decisions}
-            stats={stats}
             lastUpdate={lastUpdate}
             language={language}
           />
@@ -734,8 +741,8 @@ function DecisionCard({ decision, language }: { decision: DecisionRecord; langua
               >
                 {action.action}
               </span>
-              {action.leverage > 0 && <span style={{ color: '#F0B90B' }}>{action.leverage}x</span>}
-              {action.price > 0 && (
+              {action.leverage && action.leverage > 0 && <span style={{ color: '#F0B90B' }}>{action.leverage}x</span>}
+              {action.price && action.price > 0 && (
                 <span className="font-mono text-xs" style={{ color: '#848E9C' }}>@{action.price.toFixed(4)}</span>
               )}
               <span style={{ color: action.success ? '#0ECB81' : '#F6465D' }}>

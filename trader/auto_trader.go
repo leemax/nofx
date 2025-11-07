@@ -85,6 +85,7 @@ type AutoTrader struct {
 	lastResetTime         time.Time
 	stopUntil             time.Time
 	isRunning             bool
+	isDecisionMaker       bool             // 是否为决策者
 	startTime             time.Time        // 系统启动时间
 	callCount             int              // AI调用次数
 	positionFirstSeenTime map[string]int64 // 持仓首次出现时间 (symbol_side -> timestamp毫秒)
@@ -185,6 +186,7 @@ func NewAutoTrader(config *AutoTraderConfig) (*AutoTrader, error) {
 		startTime:             time.Now(),
 		callCount:             0,
 		isRunning:             false,
+		isDecisionMaker:       false, // 默认不是决策者
 		positionFirstSeenTime: make(map[string]int64),
 		positionOpenCycle:     make(map[string]int),
 		positionStopLoss:      make(map[string]float64),
@@ -315,6 +317,15 @@ func (at *AutoTrader) ForceDecision() error {
 
 // runCycle 运行一个交易周期（使用AI全权决策）
 func (at *AutoTrader) runCycle() error {
+	at.mu.Lock()
+	isDecisionMaker := at.isDecisionMaker
+	at.mu.Unlock()
+
+	if !isDecisionMaker {
+		// log.Printf("ℹ️ Trader '%s' is not the decision maker, skipping cycle.", at.name)
+		return nil
+	}
+
 	at.callCount++
 
 	// 1. 获取交易所服务器时间（统一时间戳）
@@ -1286,4 +1297,11 @@ func (t *AutoTrader) SetPromptName(promptName string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.promptName = promptName
+}
+
+// SetDecisionMaker 设置trader是否为决策者
+func (at *AutoTrader) SetDecisionMaker(isMaker bool) {
+	at.mu.Lock()
+	defer at.mu.Unlock()
+	at.isDecisionMaker = isMaker
 }

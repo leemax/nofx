@@ -8,7 +8,8 @@ import type {
   CompetitionData,
   TradeRecord,
   ClosedPosition,
-} from '../types';
+  PromptsResponse,
+} from '../types/index';
 
 const API_BASE = '/api';
 
@@ -178,7 +179,6 @@ export const api = {
     return res.json();
   },
 
-  // 停止交易员
   async stopTrader(traderId: string): Promise<any> {
     const url = `${API_BASE}/trader/${traderId}/stop`;
     const res = await fetch(url, {
@@ -186,6 +186,17 @@ export const api = {
       ...fetchOptions,
     });
     if (!res.ok) throw new Error('停止交易员失败');
+    return res.json();
+  },
+
+  // 设置唯一的决策者
+  async setDecisionMaker(traderId: string): Promise<any> {
+    const url = `${API_BASE}/trader/${traderId}/set-decision-maker`;
+    const res = await fetch(url, {
+      method: 'POST',
+      ...fetchOptions,
+    });
+    if (!res.ok) throw new Error('设置决策者失败');
     return res.json();
   },
 };

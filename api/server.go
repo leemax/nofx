@@ -96,6 +96,7 @@ func (s *Server) setupRoutes() {
 		    // 新增：启动/停止trader
 		    api.POST("/trader/:traderId/start", s.handleStartTrader)
 		    api.POST("/trader/:traderId/stop", s.handleStopTrader)
+		    api.POST("/trader/:traderId/set-decision-maker", s.handleSetDecisionMaker)
 		  }
 		}
 // handleClosedPositions 处理已平仓交易的请求
@@ -583,4 +584,20 @@ func (s *Server) handleStopTrader(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "交易员已停止"})
+}
+
+// handleSetDecisionMaker 设置唯一的决策者
+func (s *Server) handleSetDecisionMaker(c *gin.Context) {
+	traderID := c.Param("traderId")
+	if traderID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "traderId is required"})
+		return
+	}
+
+	if err := s.traderManager.SetDecisionMaker(traderID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("设置决策者失败: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "决策者已设置"})
 }

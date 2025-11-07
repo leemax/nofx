@@ -230,7 +230,32 @@ func (tm *TraderManager) StopTrader(traderID string) error {
 		return fmt.Errorf("trader ID '%s' 不存在", traderID)
 	}
 
-	log.Printf("⏹  停止 %s...", at.GetName())
+	log.Printf("⏹️  停止 %s...", at.GetName())
 	at.Stop()
+	return nil
+}
+
+// SetDecisionMaker 设置唯一的决策者
+func (tm *TraderManager) SetDecisionMaker(decisionMakerID string) error {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	log.Printf("👑 设置 '%s' 为唯一决策者...", decisionMakerID)
+
+	found := false
+	for id, t := range tm.traders {
+		if id == decisionMakerID {
+			t.SetDecisionMaker(true)
+			log.Printf("  ✓ %s is now the decision maker.", t.GetName())
+			found = true
+		} else {
+			t.SetDecisionMaker(false)
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("trader ID '%s' not found", decisionMakerID)
+	}
+
 	return nil
 }

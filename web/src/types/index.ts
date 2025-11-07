@@ -49,7 +49,28 @@ export type Decision = {
   take_profit?: number;
   confidence?: number;
   reasoning?: string;
+  price?: number;
+  success?: boolean;
+  error?: string;
 };
+
+export interface TraderInfo {
+  trader_id: string;
+  trader_name: string;
+  ai_model: string;
+  total_equity: number;
+  total_pnl: number;
+  total_pnl_pct: number;
+  position_count: number;
+  margin_used_pct: number;
+  is_running: boolean;
+  call_count: number;
+}
+
+export interface CompetitionData {
+  count: number;
+  traders: TraderInfo[];
+}
 
 export interface TradeRecord {
   trade_id: number;
@@ -103,7 +124,7 @@ export interface DecisionRecord {
     liquidation_price: number;
   }>;
   candidate_coins: string[];
-  decisions: DecisionAction[];
+  decisions: Decision[];
   execution_log: string[];
   success: boolean;
   error_message: string;

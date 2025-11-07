@@ -1,0 +1,155 @@
+
+// Trader信息
+export type TraderInfo = {
+    trader_id: string;
+    trader_name: string;
+    ai_model: string;
+    total_equity: number;
+    total_pnl: number;
+    total_pnl_pct: number;
+    position_count: number;
+    margin_used_pct: number;
+    is_running: boolean;
+    call_count: number;
+};
+
+// 竞赛数据
+export type CompetitionData = {
+    count: number;
+    traders: TraderInfo[];
+};
+
+// 系统状态
+export type SystemStatus = {
+  is_running: boolean;
+  start_time: string;
+  runtime_minutes: number;
+  call_count: number;
+  initial_balance: number;
+  scan_interval: string;
+  stop_until: string;
+  last_reset_time: string;
+  ai_provider: string;
+};
+
+// 账户信息
+export type AccountInfo = {
+    total_equity: number;
+    available_balance: number;
+    total_pnl: number;
+    total_pnl_pct: number;
+    total_unrealized_pnl: number;
+    margin_used: number;
+    margin_used_pct: number;
+    position_count: number;
+    initial_balance: number;
+    daily_pnl: number;
+  };
+
+// 持仓信息
+export type Position = {
+    symbol: string;
+    side: string;
+    entry_price: number;
+    mark_price: number;
+    quantity: number;
+    leverage: number;
+    unrealized_pnl: number;
+    unrealized_pnl_pct: number;
+    liquidation_price: number;
+    margin_used: number;
+  };
+
+// 决策动作
+export type Decision = {
+        symbol: string;
+        action: 'buy' | 'sell' | 'hold' | 'wait';
+        leverage?: number;
+        position_size_usd?: number;
+        stop_loss?: number;
+        take_profit?: number;
+        confidence?: number;
+        reasoning?: string;
+        price?: number; // Added missing price property
+        success?: boolean; // Added missing success property
+        error?: string; // Added missing error property
+      };
+export type TradeRecord = {
+    trade_id: number;
+    order_id: number;
+    trader_id: string;
+    symbol: string;
+    price: number;
+    quantity: number;
+    commission: number;
+    commission_asset: string;
+    is_buyer: boolean;
+    is_maker: boolean;
+    timestamp: string; // ISO 8601 date string
+  };
+
+// 已平仓头寸的盈亏分析
+export type ClosedPosition = {
+    symbol: string;
+    open_time: string;
+    close_time: string;
+    duration: string;
+    total_quantity: number;
+    avg_open_price: number;
+    avg_close_price: number;
+    total_fees: number;
+    net_profit: number;
+  };
+
+// 决策记录
+export type DecisionRecord = {
+    timestamp: string;
+    cycle_number: number;
+    input_prompt: string;
+    cot_trace: string;
+    decision_json: string;
+    account_state: {
+      total_balance: number;
+      available_balance: number;
+      total_unrealized_profit: number;
+      position_count: number;
+      margin_used_pct: number;
+    };
+    positions: Array<{
+      symbol: string;
+      side: string;
+      position_amt: number;
+      entry_price: number;
+      mark_price: number;
+      unrealized_profit: number;
+      leverage: number;
+      liquidation_price: number;
+    }>;
+    candidate_coins: string[];
+    decisions: Decision[];
+    execution_log: string[];
+    success: boolean;
+    error_message: string;
+  };
+
+// 统计信息
+export type Statistics = {
+    total_cycles: number;
+    successful_cycles: number;
+    failed_cycles: number;
+    total_open_positions: number;
+    total_close_positions: number;
+  };
+
+// 新增：系统提示词
+export type Prompt = {
+    id: string;
+    name: string;
+    text: string;
+  };
+
+// 新增：获取提示词列表的API响应结构
+export type PromptsResponse = {
+    prompts: Prompt[];
+    default_prompt_id: string;
+  };

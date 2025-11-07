@@ -2,7 +2,7 @@ import useSWR from 'swr';
 import { useLanguage } from '../contexts/LanguageContext';
 import { t } from '../i18n/translations';
 import { api } from '../lib/api';
-import { ClosedPosition } from '../types'; // 导入ClosedPosition类型
+import { ClosedPosition } from '../types/index'; // 导入ClosedPosition类型
 import { logger } from '../utils/logger';
 
 interface TradeOutcome {

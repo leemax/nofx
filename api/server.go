@@ -37,7 +37,7 @@ func NewServer(traderManager *manager.TraderManager, cfg *config.Config, port in
 
 	// 配置并启用CORS中间件
 	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowOrigins = []string{"http://localhost:3000"} // 明确允许前端的源
+	corsConfig.AllowOrigins = []string{"http://localhost:3000", "http://43.153.176.90", "http://43.153.176.90:3000"} // 明确允许前端的源
 	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
 	router.Use(cors.New(corsConfig))
@@ -69,7 +69,7 @@ func (s *Server) setupRoutes() {
 		// Trader列表
 		api.GET("/traders", s.handleTraderList)
 
-		// 指定trader的数据（使用query参数 ?trader_id=xxx）
+				api.GET("/statistics", s.handleStatistics)
 		api.GET("/status", s.handleStatus)
 		api.GET("/account", s.handleAccount)
 		api.GET("/positions", s.handlePositions)
@@ -278,6 +278,24 @@ func (s *Server) handleStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, status)
 }
 
+// handleStatistics 获取统计信息
+func (s *Server) handleStatistics(c *gin.Context) {
+	_, traderID, err := s.getTraderFromQuery(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	trader, err := s.traderManager.GetTrader(traderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	statistics := trader.GetStatistics()
+	c.JSON(http.StatusOK, statistics)
+}
+
 // handleAccount 账户信息
 func (s *Server) handleAccount(c *gin.Context) {
 	_, traderID, err := s.getTraderFromQuery(c)
@@ -376,7 +394,7 @@ func (s *Server) handleLatestDecisions(c *gin.Context) {
 		return
 	}
 
-	records, err := trader.GetDecisionLogger().GetLatestRecords(5)
+	records, err := trader.GetDecisionLogger().GetLatestRecords(20)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("获取决策日志失败: %v", err),

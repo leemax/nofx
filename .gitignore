@@ -38,3 +38,5 @@ web/dist/
 web/.vite/
 nofx.dbconfig.json
 .env
+nofx.db
+config.json

@@ -964,4 +964,6 @@ func (t *AsterTrader) FormatQuantity(symbol string, quantity float64) (string, e
 }
 
 // Stop satisfies the Trader interface, but does nothing for Aster as there is no persistent connection.
-func (t *AsterTrader) Stop() {}
+func (t *AsterTrader) Stop() error {
+	return nil // No persistent connection, so no error on stop
+}

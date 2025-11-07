@@ -845,15 +845,16 @@ func logPublicIP() {
 }
 
 // Stop closes the user data stream.
-func (t *FuturesTrader) Stop() {
+func (t *FuturesTrader) Stop() error {
 	if t.listenKey == "" {
-		return
+		return nil
 	}
 	log.Println("ℹ️ 正在关闭币安用户数据流...")
 	err := t.client.NewCloseUserStreamService().ListenKey(t.listenKey).Do(context.Background())
 	if err != nil {
 		log.Printf("❌ 关闭币安用户数据流失败: %v", err)
-		return
+		return fmt.Errorf("关闭币安用户数据流失败: %w", err)
 	}
 	log.Println("✓ 币安用户数据流已关闭")
+	return nil
 }

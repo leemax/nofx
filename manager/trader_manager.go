@@ -211,13 +211,32 @@ func (tm *TraderManager) StartTrader(traderID string) error {
 		return fmt.Errorf("trader ID '%s' 不存在", traderID)
 	}
 
-	log.Printf("▶️  启动 %s...", at.GetName())
+	// Use a channel to communicate the initial startup error from the goroutine
+	errChan := make(chan error, 1)
+
 	go func() {
-		if err := at.Run(); err != nil {
-			log.Printf("❌ %s 运行错误: %v", at.GetName(), err)
+		err := at.Run()
+		if err != nil {
+			errChan <- err // Send error if Run() fails
+		} else {
+			errChan <- nil // Send nil for success
 		}
+		close(errChan) // Close the channel after sending
 	}()
-	return nil
+
+	// Wait for the initial startup result
+	select {
+	case err := <-errChan:
+		if err != nil {
+			log.Printf("❌ Trader '%s' 启动失败: %v", at.GetName(), err)
+			return fmt.Errorf("trader '%s' 启动失败: %w", at.GetName(), err)
+		}
+		log.Printf("▶️  Trader '%s' 已成功启动。", at.GetName())
+		return nil
+	case <-time.After(5 * time.Second): // Timeout for initial startup
+		log.Printf("⚠️  Trader '%s' 启动超时，可能仍在后台运行。", at.GetName())
+		return fmt.Errorf("trader '%s' 启动超时", at.GetName())
+	}
 }
 
 // StopTrader 停止指定ID的trader
@@ -231,7 +250,9 @@ func (tm *TraderManager) StopTrader(traderID string) error {
 	}
 
 	log.Printf("⏹️  停止 %s...", at.GetName())
-	at.Stop()
+	if err := at.Stop(); err != nil {
+		return fmt.Errorf("停止交易员 '%s' 失败: %w", at.GetName(), err)
+	}
 	return nil
 }
 

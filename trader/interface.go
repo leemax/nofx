@@ -47,5 +47,5 @@ type Trader interface {
 	GetServerTime() (time.Time, error)
 
 	// Stop 停止交易器（例如，关闭WebSocket连接）
-	Stop()
+	Stop() error
 }

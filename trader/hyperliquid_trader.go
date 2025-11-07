@@ -687,4 +687,6 @@ func absFloat(x float64) float64 {
 }
 
 // Stop satisfies the Trader interface, but does nothing for Hyperliquid as there is no persistent connection.
-func (t *HyperliquidTrader) Stop() {}
+func (t *HyperliquidTrader) Stop() error {
+	return nil // No persistent connection, so no error on stop
+}

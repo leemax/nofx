@@ -5,6 +5,7 @@ import { EquityChart } from './components/EquityChart';
 import { CompetitionPage } from './components/CompetitionPage';
 import AILearning from './components/AILearning';
 
+
 import { TraderStatusToggle } from './components/TraderStatusToggle';
 
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
@@ -16,7 +17,6 @@ import type {
   DecisionRecord,
   Statistics,
   TraderInfo,
-  Prompt,
   PromptsResponse,
 } from './types/index';
 
@@ -85,7 +85,7 @@ function App() {
   }, [traders, selectedTraderId]);
 
   // 如果在trader页面，获取该trader的数据
-  const { data: status } = useSWR<SystemStatus>(
+  const { data: status, mutate: mutateStatus } = useSWR<SystemStatus>(
     currentPage === 'trader' && selectedTraderId
       ? `status-${selectedTraderId}`
       : null,
@@ -270,52 +270,21 @@ function App() {
                 </select>
               )}
 
+
+
+
+
               {currentPage === 'trader' && status && selectedTraderId && (
                 <TraderStatusToggle
                   traderId={selectedTraderId}
                   isRunning={status.is_running}
-                  onToggle={async (newStatus) => {
+                  onToggle={async () => {
                     if (selectedTraderId) {
-                      // Optimistically update the UI
-                      if (status) {
-                        status.is_running = newStatus;
-                      }
-                      // Revalidate the status data after the toggle action
-                      await api.startTrader(selectedTraderId);
+                      await mutateStatus(); // Revalidate the status data after the toggle action
                     }
                   }}
                 />
               )}
-
-              {/* Prompt Selector (only show on trader page) */}
-              {currentPage === 'trader' && prompts && prompts.length > 0 && (
-                <select
-                  value={selectedPromptId}
-                  onChange={async (e) => {
-                    const newPromptId = e.target.value;
-                    setSelectedPromptId(newPromptId);
-                    if (selectedTraderId) {
-                      try {
-                        await api.setTraderPrompt(selectedTraderId, newPromptId);
-                        // Optional: show a success notification
-                      } catch (error) {
-                        console.error("Failed to set trader prompt:", error);
-                        // Optional: show an error notification
-                      }
-                    }
-                  }}
-                  className="rounded px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium cursor-pointer transition-colors flex-1 sm:flex-initial min-w-48"
-                  style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
-                >
-                  {prompts.map((prompt: Prompt) => (
-                    <option key={prompt.id} value={prompt.id}>
-                      {prompt.id}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-
 
               {/* Force Decision Button (only show on trader page) */}
               {currentPage === 'trader' && (

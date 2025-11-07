@@ -77,7 +77,8 @@ type Config struct {
 	StopTradingMinutes int            `json:"stop_trading_minutes"`
 	Leverage           LeverageConfig `json:"leverage"` // 杠杆配置
 	DecisionPrompts    []Prompt       `json:"decision_prompts"`
-	DefaultPrompt      string         `json:"default_prompt"`
+	DefaultPrompt         string         `json:"default_prompt"`
+	DefaultDecisionMakerID string         `json:"default_decision_maker_id,omitempty"` // New field
 }
 
 // LoadConfig 从文件加载配置

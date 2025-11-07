@@ -88,6 +88,14 @@ func main() {
 		log.Fatalf("❌ 没有启用的trader，请在config.json中设置至少一个trader的enabled=true")
 	}
 
+	// 设置默认决策者（如果配置了）
+	if cfg.DefaultDecisionMakerID != "" {
+		if err := traderManager.SetDecisionMaker(cfg.DefaultDecisionMakerID); err != nil {
+			log.Fatalf("❌ 设置默认决策者失败: %v", err)
+		}
+		log.Printf("✓ 已设置默认决策者: %s", cfg.DefaultDecisionMakerID)
+	}
+
 	fmt.Println()
 	fmt.Println("🏁 竞赛参赛者:")
 	for _, traderCfg := range cfg.Traders {
@@ -126,7 +134,7 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	// 启动所有trader (现在由API手动控制)
-	// traderManager.StartAll()
+	traderManager.StartAll()
 
 	// 等待退出信号
 	<-sigChan

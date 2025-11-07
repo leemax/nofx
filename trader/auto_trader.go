@@ -92,7 +92,7 @@ type AutoTrader struct {
 	positionOpenCycle     map[string]int   // 持仓开仓周期 (symbol_side -> cycle_number)
 	positionStopLoss      map[string]float64 // 持仓初始止损价 (symbol_side -> price)
 	promptName            string           // 当前使用的系统提示词名称
-	stopChan              chan struct{}    // 用于停止交易循环的channel
+	currentStopChan       chan struct{}    // 用于停止交易循环的channel (每次Run()时创建)
 	mu                    sync.Mutex       // Mutex for thread-safe operations
 }
 
@@ -191,7 +191,7 @@ func NewAutoTrader(config *AutoTraderConfig) (*AutoTrader, error) {
 		positionOpenCycle:     make(map[string]int),
 		positionStopLoss:      make(map[string]float64),
 		promptName:            config.PromptName, // 设置提示词名称
-		stopChan:              make(chan struct{}, 1),
+
 	}, nil
 }
 
@@ -201,25 +201,31 @@ func (at *AutoTrader) Run() error {
 	if at.isRunning {
 		at.mu.Unlock()
 		log.Printf("⚠️  Trader '%s' 已经在运行中，拒绝重复启动。", at.name)
-		return nil
+		return fmt.Errorf("trader '%s' 已经在运行中", at.name)
 	}
 	at.isRunning = true
+	// 为本次运行创建一个新的停止通道
+	stop := make(chan struct{})
+	at.currentStopChan = stop // 存储它
 	at.mu.Unlock()
 
-	// 确保在函数退出时将状态设置为停止
+	// 确保在函数退出时关闭停止通道并重置状态
 	defer func() {
 		at.mu.Lock()
+		close(stop) // 关闭通道
+		at.currentStopChan = nil // 清除引用
 		at.isRunning = false
 		at.mu.Unlock()
 		log.Printf("🛑 Trader '%s' 运行循环已停止。", at.name)
 	}()
+
 	log.Println("🚀 AI驱动自动交易系统启动")
 	log.Printf("💰 初始余额: %.2f USDT", at.initialBalance)
 	log.Printf("⚙️  扫描间隔: %v", at.config.ScanInterval)
 	log.Println("🤖 AI将全权决定杠杆、仓位大小、止损止盈等参数")
 
-	// 启动UI数据轮询器
-	go at.StartUIDataPoller()
+	// 启动UI数据轮询器，并传递新的停止通道
+	go at.StartUIDataPoller(stop)
 
 	ticker := time.NewTicker(at.config.ScanInterval)
 	defer ticker.Stop()
@@ -227,6 +233,7 @@ func (at *AutoTrader) Run() error {
 	// 首次立即执行
 	if err := at.runCycle(); err != nil {
 		log.Printf("❌ 执行失败: %v", err)
+		return err // 传播初始错误
 	}
 
 	for {
@@ -235,17 +242,15 @@ func (at *AutoTrader) Run() error {
 			if err := at.runCycle(); err != nil {
 				log.Printf("❌ 执行失败: %v", err)
 			}
-		case <-at.stopChan:
+		case <-stop: // 监听新的停止通道
 			log.Printf("ℹ️ 接到停止信号，%s 的运行循环即将退出。", at.name)
 			return nil
 		}
 	}
-
-	return nil
 }
 
 // StartUIDataPoller 启动UI数据轮询器，独立刷新账户和持仓信息
-func (at *AutoTrader) StartUIDataPoller() {
+func (at *AutoTrader) StartUIDataPoller(stopChan <-chan struct{}) {
 	log.Println("📊 UI数据轮询器启动，每15秒刷新一次账户和持仓信息...")
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
@@ -261,7 +266,7 @@ func (at *AutoTrader) StartUIDataPoller() {
 			if _, err := at.trader.GetPositions(); err != nil {
 				log.Printf("❌ UI数据轮询器：刷新持仓信息失败: %v", err)
 			}
-		case <-at.stopChan:
+		case <-stopChan:
 			log.Println("📊 UI数据轮询器停止")
 			return
 		}
@@ -269,25 +274,39 @@ func (at *AutoTrader) StartUIDataPoller() {
 }
 
 // Stop 停止自动交易
-func (at *AutoTrader) Stop() {
+func (at *AutoTrader) Stop() error {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 
 	if !at.isRunning {
 		log.Printf("⚠️  Trader '%s' 已经停止，无需再次停止。", at.name)
-		return
+		return fmt.Errorf("trader '%s' 已经停止，无需再次停止", at.name)
+	}
+
+	// 检查是否有活动的停止通道
+	if at.currentStopChan == nil {
+		log.Printf("⚠️  Trader '%s' 没有活动的停止通道，可能未完全启动或已停止。", at.name)
+		return fmt.Errorf("trader '%s' 没有活动的停止通道", at.name)
 	}
 
 	log.Printf("⏹️  正在发送停止信号给 Trader '%s'...", at.name)
-	// 非阻塞发送，防止重复调用时卡死
+	// 向当前的停止通道发送信号
 	select {
-	case at.stopChan <- struct{}{}:
-		// 成功发送信号
-		// 调用底层交易器的Stop方法，以关闭WebSocket等连接
-		at.trader.Stop()
+	case at.currentStopChan <- struct{}{}:
+		// 信号发送成功
 	default:
-		// channel已满或已关闭，说明已在停止中
+		// 通道已满或已关闭，说明已在停止中
+		log.Printf("⚠️  Trader '%s' 停止信号通道已满或已关闭，可能已在停止中。", at.name)
+		return fmt.Errorf("trader '%s' 停止信号通道已满或已关闭", at.name)
 	}
+
+	// 调用底层交易器的Stop方法，以关闭WebSocket等连接
+	err := at.trader.Stop()
+	if err != nil {
+		return fmt.Errorf("关闭底层交易器失败: %w", err)
+	}
+
+	return nil
 }
 
 // ForceDecision 强制执行一次决策周期
@@ -322,7 +341,7 @@ func (at *AutoTrader) runCycle() error {
 	at.mu.Unlock()
 
 	if !isDecisionMaker {
-		// log.Printf("ℹ️ Trader '%s' is not the decision maker, skipping cycle.", at.name)
+		log.Printf("ℹ️ Trader '%s' is not the decision maker, skipping cycle.", at.name)
 		return nil
 	}
 
@@ -1120,6 +1139,11 @@ func (at *AutoTrader) GetStatus() map[string]interface{} {
 		"last_reset_time": at.lastResetTime.Format(time.RFC3339),
 		"ai_provider":     aiProvider,
 	}
+}
+
+// GetStatistics 获取统计信息（用于API）
+func (at *AutoTrader) GetStatistics() map[string]interface{} {
+	return at.GetStatus()
 }
 
 // GetAccountInfo 获取账户信息（用于API）

@@ -24,6 +24,8 @@ type PositionInfo struct {
 	LiquidationPrice float64 `json:"liquidation_price"`
 	MarginUsed       float64 `json:"margin_used"`
 	UpdateTime       int64   `json:"update_time"` // 持仓更新时间戳（毫秒）
+	InitialStopLoss  float64 `json:"initial_stop_loss,omitempty"` // 初始止损价
+	CurrentStopLoss  float64 `json:"current_stop_loss,omitempty"` // 当前交易所设置的止损价
 	IsExternal       bool    `json:"-"`           // 是否为外部仓位（不序列化）
 }
 
@@ -73,12 +75,12 @@ type Context struct {
 // Decision AI的交易决策
 type Decision struct {
 	Symbol          string  `json:"symbol"`
-	Action          string  `json:"action"` // "open_long", "open_short", "close_long", "close_short", "partial_close_long", "partial_close_short", "hold", "wait", "move_sl_to_breakeven"
+	Action          string  `json:"action"` // "open_long", "open_short", "close_long", "close_short", "partial_close_long", "partial_close_short", "update_stop_loss", "hold", "wait"
 	Leverage        int     `json:"leverage,omitempty"`
 	PositionSizeUSD float64 `json:"position_size_usd,omitempty"`
 	StopLoss        float64 `json:"stop_loss,omitempty"`
 	TakeProfit      float64 `json:"take_profit,omitempty"`
-	NewStopLoss     float64 `json:"new_stop_loss,omitempty"` // For "move_sl_to_breakeven" action
+	NewStopLoss     float64 `json:"new_stop_loss,omitempty"` // For "update_stop_loss" action
 	Confidence      int     `json:"confidence,omitempty"` // 信心度 (0-100)
 	RiskUSD         float64 `json:"risk_usd,omitempty"`   // 最大美元风险
 	Reasoning       string  `json:"reasoning"`
@@ -342,9 +344,9 @@ func buildUserPrompt(ctx *Context) string {
 				externalTag = " (外部持仓，请评估)"
 			}
 
-			sb.WriteString(fmt.Sprintf("%d. %s %s | 入场价%.4f 当前价%.4f | 盈亏%+.2f%% | 杠杆%dx | 保证金%.0f | 强平价%.4f%s%s\n\n",
+			sb.WriteString(fmt.Sprintf("%d. %s %s | 入场价%.4f 当前价%.4f | 初始止损: %.4f 当前止损: %.4f | 盈亏%+.2f%% | 杠杆%dx | 保证金%.0f | 强平价%.4f%s%s\n\n",
 				i+1, pos.Symbol, strings.ToUpper(pos.Side),
-				pos.EntryPrice, pos.MarkPrice, pos.UnrealizedPnLPct,
+				pos.EntryPrice, pos.MarkPrice, pos.InitialStopLoss, pos.CurrentStopLoss, pos.UnrealizedPnLPct,
 				pos.Leverage, pos.MarginUsed, pos.LiquidationPrice, holdingDuration, externalTag))
 
 			// 使用FormatMarketData输出完整市场数据
@@ -434,47 +436,66 @@ func extractCoTTrace(response string) string {
 	return strings.TrimSpace(response)
 }
 
-// extractDecisions 提取JSON决策列表 (兼容单个对象或数组)
+// extractDecisions 提取JSON决策列表 (兼容单个对象或数组，并能处理尾随的无效数据)
 func extractDecisions(response string) ([]Decision, error) {
-	// 查找JSON代码块的开始和结束标记
+	var jsonStream string
+
+	// 1. 优先寻找 ```json ... ``` 代码块
 	jsonCodeBlockStart := "```json"
-	jsonCodeBlockEnd := "```"
-
 	startIdx := strings.Index(response, jsonCodeBlockStart)
-	if startIdx == -1 {
-		return nil, fmt.Errorf("无法找到JSON代码块起始标记: %s", jsonCodeBlockStart)
+
+	if startIdx != -1 {
+		// 从代码块开始处获取流
+		jsonStream = response[startIdx+len(jsonCodeBlockStart):]
+		// 如果代码块有结束符，则只取到结束符，以防万一后面还有其他内容
+		jsonCodeBlockEnd := "```"
+		if endIdx := strings.Index(jsonStream, jsonCodeBlockEnd); endIdx != -1 {
+			jsonStream = jsonStream[:endIdx]
+		}
+	} else {
+		// 2. 如果没有代码块，则从第一个 '{' 或 '[' 开始寻找
+		firstBrace := strings.Index(response, "{")
+		firstBracket := strings.Index(response, "[")
+
+		startJSON := -1
+		if firstBrace != -1 && (firstBrace < firstBracket || firstBracket == -1) {
+			startJSON = firstBrace
+		} else if firstBracket != -1 {
+			startJSON = firstBracket
+		}
+
+		if startJSON != -1 {
+			jsonStream = response[startJSON:]
+		} else {
+			return nil, fmt.Errorf("无法在AI响应中找到任何JSON的起始标志 ('{' 或 '[')")
+		}
 	}
 
-	// 查找结束标记，从起始标记之后开始搜索
-	endIdx := strings.Index(response[startIdx+len(jsonCodeBlockStart):], jsonCodeBlockEnd)
-	if endIdx == -1 {
-		return nil, fmt.Errorf("无法找到JSON代码块结束标记: %s", jsonCodeBlockEnd)
-	}
-	endIdx += startIdx + len(jsonCodeBlockStart) // 调整endIdx为response中的实际位置
+	// 🔧 修复常见的JSON格式错误 (例如中文引号)
+	jsonStream = fixMissingQuotes(strings.TrimSpace(jsonStream))
 
-	// 提取JSON内容
-	jsonContent := strings.TrimSpace(response[startIdx+len(jsonCodeBlockStart) : endIdx])
-
-	// 🔧 修复常见的JSON格式错误
-	jsonContent = fixMissingQuotes(jsonContent)
-
+	// 使用 json.Decoder 来解析流，这可以忽略掉JSON之后的多余字符
 	// 尝试解析为决策数组
 	var decisions []Decision
-	err := json.Unmarshal([]byte(jsonContent), &decisions)
+	reader := strings.NewReader(jsonStream)
+	decoder := json.NewDecoder(reader)
+	err := decoder.Decode(&decisions)
 	if err == nil {
 		return decisions, nil // 成功解析数组
 	}
 
 	// 如果数组解析失败，尝试解析为单个决策对象
 	var singleDecision Decision
-	err2 := json.Unmarshal([]byte(jsonContent), &singleDecision)
+	reader.Seek(0, 0) // 重置 reader
+	decoder = json.NewDecoder(reader)
+	err2 := decoder.Decode(&singleDecision)
 	if err2 == nil {
 		// 如果单个对象解析成功，将其放入数组中返回
 		return []Decision{singleDecision}, nil
 	}
 
-	// 如果两种方式都失败，返回原始的数组解析错误
-	return nil, fmt.Errorf("JSON解析失败 (尝试数组和对象两种模式后): %w\nJSON内容: %s", err, jsonContent)
+	// 如果两种方式都失败，返回更有用的错误信息
+	return nil, fmt.Errorf("JSON解析失败 (尝试数组和对象两种模式后): [数组解析错误: %v], [对象解析错误: %v]\n原始JSON流: %s", err, err2, jsonStream)
 }
 
 // fixMissingQuotes 替换中文引号为英文引号（避免输入法自动转换）

@@ -53,6 +53,7 @@ type FifteenMinData struct {
 
 // OneHourData 1小时数据
 type OneHourData struct {
+	EMA20 float64
 	EMA50 float64
 	ATR14 float64
 }
@@ -667,6 +668,7 @@ func calculateOneHourContext(klines []Kline) *OneHourData {
 		return &OneHourData{}
 	}
 	return &OneHourData{
+		EMA20: calculateEMA(klines, 20),
 		EMA50: calculateEMA(klines, 50),
 		ATR14: calculateATR(klines, 14),
 	}
@@ -839,6 +841,7 @@ func Format(data *Data) string {
 	// 1H Data
 	if data.OneHourContext != nil {
 		sb.WriteString("\n**1-Hour (1H) Data:**\n")
+		sb.WriteString(fmt.Sprintf("- **1H_EMA_20**: `%.4f`\n", data.OneHourContext.EMA20))
 		sb.WriteString(fmt.Sprintf("- **1H_EMA_50**: `%.4f`\n", data.OneHourContext.EMA50))
 		sb.WriteString(fmt.Sprintf("- **1H_ATR_14**: `%.4f`\n", data.OneHourContext.ATR14))
 	}

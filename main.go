@@ -33,7 +33,7 @@ func main() {
 	}
 
 	// 初始化数据库
-	if err := database.InitDB("nofx.db"); err != nil {
+	if err := database.InitDB("/app/database/nofx.db"); err != nil {
 		log.Fatalf("❌ 初始化数据库失败: %v", err)
 	}
 

@@ -967,3 +967,9 @@ func (t *AsterTrader) FormatQuantity(symbol string, quantity float64) (string, e
 func (t *AsterTrader) Stop() error {
 	return nil // No persistent connection, so no error on stop
 }
+
+// GetCurrentStopLoss is a placeholder to satisfy the Trader interface.
+func (t *AsterTrader) GetCurrentStopLoss(symbol string) (float64, error) {
+	log.Printf("⚠️  GetCurrentStopLoss not implemented for AsterTrader, returning 0.0")
+	return 0.0, nil
+}

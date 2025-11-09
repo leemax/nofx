@@ -46,6 +46,9 @@ type Trader interface {
 	// GetServerTime 获取服务器时间
 	GetServerTime() (time.Time, error)
 
+	// GetCurrentStopLoss 获取当前止损单价格
+	GetCurrentStopLoss(symbol string) (float64, error)
+
 	// Stop 停止交易器（例如，关闭WebSocket连接）
 	Stop() error
 }

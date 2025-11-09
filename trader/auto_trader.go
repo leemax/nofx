@@ -10,6 +10,7 @@ import (
 	"nofx/market"
 	"nofx/mcp"
 	"nofx/pool"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -636,6 +637,33 @@ func (at *AutoTrader) buildTradingContext(serverTime time.Time) (*decision.Conte
 
 		// 检查是否为外部仓位（即，不在内部开仓记录中）
 		_, isInternal := at.positionOpenCycle[posKey]
+		initialStopLoss := at.positionStopLoss[posKey] // 获取初始止损价
+
+		// 如果是外部仓位，尝试从数据库恢复初始止损价
+		if !isInternal && initialStopLoss == 0 {
+			log.Printf("ℹ️ 检测到外部仓位 %s，正在尝试从数据库恢复初始止损价...", posKey)
+			latestDecision, err := database.GetLatestOpenDecision(at.id, symbol, side)
+			if err != nil {
+				log.Printf("⚠️  查询 %s 的最新开仓决策失败: %v", posKey, err)
+			} else if latestDecision != nil {
+				var decisions []decision.Decision
+				if jsonErr := json.Unmarshal([]byte(latestDecision.DecisionJSON), &decisions); jsonErr == nil && len(decisions) > 0 {
+					recoveredSL := decisions[0].StopLoss
+					if recoveredSL > 0 {
+						initialStopLoss = recoveredSL
+						at.positionStopLoss[posKey] = recoveredSL // 恢复到内存中
+						log.Printf("✅ 成功恢复 %s 的初始止损价: %.4f", posKey, recoveredSL)
+					}
+				}
+			}
+		}
+
+		// 获取当前交易所设置的止损价
+		currentStopLoss, err := at.trader.GetCurrentStopLoss(symbol)
+		if err != nil {
+			log.Printf("⚠️  获取 %s 的当前止损价失败: %v", symbol, err)
+			currentStopLoss = 0.0 // 出错时默认为0
+		}
 
 		positionInfos = append(positionInfos, decision.PositionInfo{
 			Symbol:           symbol,
@@ -649,7 +677,9 @@ func (at *AutoTrader) buildTradingContext(serverTime time.Time) (*decision.Conte
 			LiquidationPrice: liquidationPrice,
 			MarginUsed:       marginUsed,
 			UpdateTime:       updateTime,
-			IsExternal:       !isInternal, // 如果不在内部记录中，则为外部仓位
+			InitialStopLoss:  initialStopLoss,   // 填充初始止损价
+			CurrentStopLoss:  currentStopLoss,   // 填充当前交易所的止损价
+			IsExternal:       !isInternal,       // 如果不在内部记录中，则为外部仓位
 		})
 	}
 
@@ -751,8 +781,8 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *decision.Decision, act
 		return at.executePartialCloseLongWithRecord(decision, actionRecord)
 	case "partial_close_short":
 		return at.executePartialCloseShortWithRecord(decision, actionRecord)
-	case "move_sl_to_breakeven":
-		return at.executeMoveSLToBreakevenWithRecord(decision, actionRecord)
+	case "update_stop_loss":
+		return at.executeUpdateStopLossWithRecord(decision, actionRecord)
 	case "hold", "wait":
 		// 无需执行，仅记录
 		return nil
@@ -793,11 +823,43 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 	}
 
 	// 记录订单ID
-	if orderID, ok := order["orderId"].(int64); ok {
+	var orderID int64
+	if id, ok := order["orderId"].(int64); ok {
+		orderID = id
+		actionRecord.OrderID = orderID
+	} else if idStr, ok := order["orderId"].(string); ok { // Some exchanges might return orderId as string
+		orderID, _ = strconv.ParseInt(idStr, 10, 64)
 		actionRecord.OrderID = orderID
 	}
 
-	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", order["orderId"], quantity)
+	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", orderID, quantity)
+
+	// 插入订单记录到数据库
+	if orderID != 0 {
+		orderSide := "LONG"
+		orderType := "MARKET" // Assuming market order for now
+		orderStatus := "FILLED" // Assuming filled immediately
+		
+		if err := database.InsertOrder(orderID, at.id, decision.Symbol, orderSide, orderType, orderStatus, actionRecord.Price, actionRecord.Quantity, actionRecord.Timestamp); err != nil {
+			log.Printf("❌ 插入订单记录到数据库失败: %v", err)
+		} else {
+			log.Printf("  ✓ 订单记录 %d 插入数据库成功。", orderID)
+		}
+
+		// 尝试插入成交记录 (简化处理，实际可能需要从交易所获取更详细的成交信息)
+		// 假设一个订单对应一个成交，且成交价就是订单价，佣金为0 (需要根据实际交易所API调整)
+		tradeID := orderID // Use orderID as tradeID for simplicity
+		commission := 0.0
+		commissionAsset := "USDT" // Placeholder
+		isBuyer := true // For long, it's a buyer
+		isMaker := true // Assuming maker for simplicity
+
+		if err := database.InsertTrade(tradeID, orderID, at.id, decision.Symbol, commissionAsset, actionRecord.Price, actionRecord.Quantity, commission, isBuyer, isMaker, actionRecord.Timestamp); err != nil {
+			log.Printf("❌ 插入成交记录到数据库失败: %v", err)
+		} else {
+			log.Printf("  ✓ 成交记录 %d 插入数据库成功。", tradeID)
+		}
+	}
 
 	// 记录开仓周期和止损价，用于冷静期判断
 	posKey := decision.Symbol + "_long"
@@ -847,11 +909,43 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 	}
 
 	// 记录订单ID
-	if orderID, ok := order["orderId"].(int64); ok {
+	var orderID int64
+	if id, ok := order["orderId"].(int64); ok {
+		orderID = id
+		actionRecord.OrderID = orderID
+	} else if idStr, ok := order["orderId"].(string); ok { // Some exchanges might return orderId as string
+		orderID, _ = strconv.ParseInt(idStr, 10, 64)
 		actionRecord.OrderID = orderID
 	}
 
-	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", order["orderId"], quantity)
+	log.Printf("  ✓ 开仓成功，订单ID: %v, 数量: %.4f", orderID, quantity)
+
+	// 插入订单记录到数据库
+	if orderID != 0 {
+		orderSide := "SHORT"
+		orderType := "MARKET" // Assuming market order for now
+		orderStatus := "FILLED" // Assuming filled immediately
+		
+		if err := database.InsertOrder(orderID, at.id, decision.Symbol, orderSide, orderType, orderStatus, actionRecord.Price, actionRecord.Quantity, actionRecord.Timestamp); err != nil {
+			log.Printf("❌ 插入订单记录到数据库失败: %v", err)
+		} else {
+			log.Printf("  ✓ 订单记录 %d 插入数据库成功。", orderID)
+		}
+
+		// 尝试插入成交记录 (简化处理，实际可能需要从交易所获取更详细的成交信息)
+		// 假设一个订单对应一个成交，且成交价就是订单价，佣金为0 (需要根据实际交易所API调整)
+		tradeID := orderID // Use orderID as tradeID for simplicity
+		commission := 0.0
+		commissionAsset := "USDT" // Placeholder
+		isBuyer := false // For short, it's a seller
+		isMaker := true // Assuming maker for simplicity
+
+		if err := database.InsertTrade(tradeID, orderID, at.id, decision.Symbol, commissionAsset, actionRecord.Price, actionRecord.Quantity, commission, isBuyer, isMaker, actionRecord.Timestamp); err != nil {
+			log.Printf("❌ 插入成交记录到数据库失败: %v", err)
+		} else {
+			log.Printf("  ✓ 成交记录 %d 插入数据库成功。", tradeID)
+		}
+	}
 
 	// 记录开仓周期和止损价，用于冷静期判断
 	posKey := decision.Symbol + "_short"
@@ -889,11 +983,53 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *decision.Decision, ac
 	}
 
 	// 记录订单ID
-	if orderID, ok := order["orderId"].(int64); ok {
+	var orderID int64
+	if id, ok := order["orderId"].(int64); ok {
+		orderID = id
+		actionRecord.OrderID = orderID
+	} else if idStr, ok := order["orderId"].(string); ok { // Some exchanges might return orderId as string
+		orderID, _ = strconv.ParseInt(idStr, 10, 64)
 		actionRecord.OrderID = orderID
 	}
 
-	log.Printf("  ✓ 平仓成功")
+	log.Printf("  ✓ 平仓成功，订单ID: %v", orderID)
+
+	// 插入订单记录到数据库
+	if orderID != 0 {
+		orderSide := "LONG" // Closing a long position means selling
+		orderType := "MARKET" // Assuming market order for now
+		orderStatus := "FILLED" // Assuming filled immediately
+		
+		// Need to get quantity from somewhere, as decision.Quantity is 0 for close actions
+		// For simplicity, we'll assume it's the current position quantity for now.
+		// A more robust solution would fetch the actual closed quantity from the order response.
+		closedQuantity := 0.0
+		if q, ok := order["executedQty"].(float64); ok {
+			closedQuantity = q
+		} else if qStr, ok := order["executedQty"].(string); ok {
+			closedQuantity, _ = strconv.ParseFloat(qStr, 64)
+		}
+		actionRecord.Quantity = closedQuantity // Update actionRecord with actual closed quantity
+
+		if err := database.InsertOrder(orderID, at.id, decision.Symbol, orderSide, orderType, orderStatus, actionRecord.Price, actionRecord.Quantity, actionRecord.Timestamp); err != nil {
+			log.Printf("❌ 插入订单记录到数据库失败: %v", err)
+		} else {
+			log.Printf("  ✓ 订单记录 %d 插入数据库成功。", orderID)
+		}
+
+		// 尝试插入成交记录
+		tradeID := orderID // Use orderID as tradeID for simplicity
+		commission := 0.0
+		commissionAsset := "USDT" // Placeholder
+		isBuyer := false // Closing long is selling
+		isMaker := true // Assuming maker for simplicity
+
+		if err := database.InsertTrade(tradeID, orderID, at.id, decision.Symbol, commissionAsset, actionRecord.Price, actionRecord.Quantity, commission, isBuyer, isMaker, actionRecord.Timestamp); err != nil {
+			log.Printf("❌ 插入成交记录到数据库失败: %v", err)
+		} else {
+			log.Printf("  ✓ 成交记录 %d 插入数据库成功。", tradeID)
+		}
+	}
 
 	// 清理仓位记录
 	posKey := decision.Symbol + "_long"
@@ -922,11 +1058,53 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *decision.Decision, a
 	}
 
 	// 记录订单ID
-	if orderID, ok := order["orderId"].(int64); ok {
+	var orderID int64
+	if id, ok := order["orderId"].(int64); ok {
+		orderID = id
+		actionRecord.OrderID = orderID
+	} else if idStr, ok := order["orderId"].(string); ok { // Some exchanges might return orderId as string
+		orderID, _ = strconv.ParseInt(idStr, 10, 64)
 		actionRecord.OrderID = orderID
 	}
 
-	log.Printf("  ✓ 平仓成功")
+	log.Printf("  ✓ 平仓成功，订单ID: %v", orderID)
+
+	// 插入订单记录到数据库
+	if orderID != 0 {
+		orderSide := "SHORT" // Closing a short position means buying
+		orderType := "MARKET" // Assuming market order for now
+		orderStatus := "FILLED" // Assuming filled immediately
+		
+		// Need to get quantity from somewhere, as decision.Quantity is 0 for close actions
+		// For simplicity, we'll assume it's the current position quantity for now.
+		// A more robust solution would fetch the actual closed quantity from the order response.
+		closedQuantity := 0.0
+		if q, ok := order["executedQty"].(float64); ok {
+			closedQuantity = q
+		} else if qStr, ok := order["executedQty"].(string); ok {
+			closedQuantity, _ = strconv.ParseFloat(qStr, 64)
+		}
+		actionRecord.Quantity = closedQuantity // Update actionRecord with actual closed quantity
+
+		if err := database.InsertOrder(orderID, at.id, decision.Symbol, orderSide, orderType, orderStatus, actionRecord.Price, actionRecord.Quantity, actionRecord.Timestamp); err != nil {
+			log.Printf("❌ 插入订单记录到数据库失败: %v", err)
+		} else {
+			log.Printf("  ✓ 订单记录 %d 插入数据库成功。", orderID)
+		}
+
+		// 尝试插入成交记录
+		tradeID := orderID // Use orderID as tradeID for simplicity
+		commission := 0.0
+		commissionAsset := "USDT" // Placeholder
+		isBuyer := true // Closing short is buying
+		isMaker := true // Assuming maker for simplicity
+
+		if err := database.InsertTrade(tradeID, orderID, at.id, decision.Symbol, commissionAsset, actionRecord.Price, actionRecord.Quantity, commission, isBuyer, isMaker, actionRecord.Timestamp); err != nil {
+			log.Printf("❌ 插入成交记录到数据库失败: %v", err)
+		} else {
+			log.Printf("  ✓ 成交记录 %d 插入数据库成功。", tradeID)
+		}
+	}
 
 	// 清理仓位记录
 	posKey := decision.Symbol + "_short"
@@ -936,9 +1114,9 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *decision.Decision, a
 	return nil
 }
 
-// executeMoveSLToBreakevenWithRecord 执行移动止损到盈亏平衡点并记录详细信息
-func (at *AutoTrader) executeMoveSLToBreakevenWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
-	log.Printf("  ➡️ 移动止损到盈亏平衡点: %s, 新止损价: %.4f", decision.Symbol, decision.NewStopLoss)
+// executeUpdateStopLossWithRecord 执行更新止损并记录详细信息
+func (at *AutoTrader) executeUpdateStopLossWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
+	log.Printf("  ➡️ 更新止损: %s, 新止损价: %.4f", decision.Symbol, decision.NewStopLoss)
 
 	// 获取当前持仓信息
 	positions, err := at.trader.GetPositions()
@@ -955,7 +1133,7 @@ func (at *AutoTrader) executeMoveSLToBreakevenWithRecord(decision *decision.Deci
 	}
 
 	if targetPosition == nil {
-		return fmt.Errorf("未找到 %s 的持仓，无法移动止损", decision.Symbol)
+		return fmt.Errorf("未找到 %s 的持仓，无法更新止损", decision.Symbol)
 	}
 
 	positionSide := targetPosition["side"].(string)
@@ -963,12 +1141,12 @@ func (at *AutoTrader) executeMoveSLToBreakevenWithRecord(decision *decision.Deci
 
 	// 调用SetStopLoss更新止损
 	if err := at.trader.SetStopLoss(decision.Symbol, strings.ToUpper(positionSide), quantity, decision.NewStopLoss); err != nil {
-		return fmt.Errorf("移动止损失败: %w", err)
+		return fmt.Errorf("更新止损失败: %w", err)
 	}
 
 	actionRecord.Quantity = quantity
 	actionRecord.Price = decision.NewStopLoss // 记录新的止损价
-	log.Printf("  ✓ 止损已移动到: %.4f", decision.NewStopLoss)
+	log.Printf("  ✓ 止损已更新到: %.4f", decision.NewStopLoss)
 	return nil
 }
 

@@ -593,6 +593,30 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 	return nil
 }
 
+// GetCurrentStopLoss 获取当前有效的止损单价格
+func (t *FuturesTrader) GetCurrentStopLoss(symbol string) (float64, error) {
+	openOrders, err := t.client.NewListOpenOrdersService().Symbol(symbol).Do(context.Background())
+	if err != nil {
+		return 0, fmt.Errorf("获取 %s 的开放订单失败: %w", symbol, err)
+	}
+
+	// 遍历所有开放订单，寻找止损单
+	for _, order := range openOrders {
+		if order.Type == futures.OrderTypeStopMarket {
+			stopPrice, err := strconv.ParseFloat(order.StopPrice, 64)
+			if err != nil {
+				log.Printf("⚠️  解析止损订单 #%d 的止损价失败: %v", order.OrderID, err)
+				continue // 继续寻找下一个
+			}
+			log.Printf("✓ 找到 %s 的有效止损单 #%d，止损价: %.4f", symbol, order.OrderID, stopPrice)
+			return stopPrice, nil
+		}
+	}
+
+	log.Printf("ℹ️ 未找到 %s 的有效止损单。", symbol)
+	return 0.0, nil // 没有找到止损单，不是一个错误
+}
+
 // SymbolInfo 交易对的详细信息
 type SymbolInfo struct {
 	Precision   int

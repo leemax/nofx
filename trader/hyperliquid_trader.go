@@ -690,3 +690,10 @@ func absFloat(x float64) float64 {
 func (t *HyperliquidTrader) Stop() error {
 	return nil // No persistent connection, so no error on stop
 }
+
+// GetCurrentStopLoss is a placeholder to satisfy the Trader interface.
+// Hyperliquid's API for querying specific trigger orders is complex, so this is not implemented.
+func (t *HyperliquidTrader) GetCurrentStopLoss(symbol string) (float64, error) {
+	log.Printf("⚠️  GetCurrentStopLoss not implemented for HyperliquidTrader, returning 0.0")
+	return 0.0, nil
+}

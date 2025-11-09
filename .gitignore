@@ -1,42 +1,35 @@
-# IDE 配置文件
-.idea/
-*.iml
-*.xml
-
-# 编译产物
-nofx-auto
+# Binaries for programs and plugins
 *.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 nofx
-nofx_test
+nofx_debug
 
-# Go 相关
+# Test binary, built with `go test -c`
 *.test
+
+# Output of the go coverage tool
 *.out
 
-# 操作系统
-.DS_Store
-Thumbs.db
+# Go workspace file
+go.work
 
-# 临时文件
-*.log
-*.tmp
-*.bak
-*.backup
-
-# 环境变量
+# Environment variables
 .env
 
-# 决策日志
+# Database files
+*.db
+*.db-journal
+
+# Log files
 decision_logs/
-coin_pool_cache/
-nofx_test
+*.log
 
-# Node.js
-web/node_modules/
+# OS-specific
+.DS_Store
+
+# Dependency directories
 node_modules/
-web/dist/
-web/.vite/
-nofx.dbconfig.json
-.env
-nofx.db
-config.json
+web/node_modules/

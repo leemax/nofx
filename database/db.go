@@ -259,5 +259,66 @@ func GetAIDecisionsByTraderID(traderID string) ([]*AIDecisionRecord, error) {
 		records = append(records, &record)
 	}
 
-	return records, nil
-}
+		return records, nil
+
+	}
+
+	
+
+	// GetLatestOpenDecision retrieves the most recent 'open_long' or 'open_short' decision for a symbol.
+
+	func GetLatestOpenDecision(traderID, symbol, side string) (*AIDecisionRecord, error) {
+
+		action := "open_" + side
+
+		query := `
+
+			SELECT decision_id, trader_id, cycle_number, timestamp, input_prompt, cot_trace, decision_json, error_message 
+
+			FROM ai_decisions 
+
+			WHERE trader_id = ? 
+
+			  AND decision_json LIKE ? 
+
+			ORDER BY timestamp DESC 
+
+			LIMIT 1`
+
+	
+
+		// This LIKE pattern is simple but should be effective for the current JSON structure.
+
+		// It looks for the action and symbol within the JSON string.
+
+		likePattern := `%"action":"` + action + `","symbol":"` + symbol + `"%`
+
+	
+
+		row := db.QueryRow(query, traderID, likePattern)
+
+	
+
+		var record AIDecisionRecord
+
+		err := row.Scan(&record.DecisionID, &record.TraderID, &record.CycleNumber, &record.Timestamp, &record.InputPrompt, &record.CoTTrace, &record.DecisionJSON, &record.ErrorMessage)
+
+		if err != nil {
+
+			if err == sql.ErrNoRows {
+
+				return nil, nil // No decision found is not a fatal error.
+
+			}
+
+			return nil, fmt.Errorf("查询最新开仓决策失败: %w", err)
+
+		}
+
+	
+
+		return &record, nil
+
+	}
+
+	

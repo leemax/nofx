@@ -62,14 +62,16 @@ type OneHourData struct {
 type FourHourData struct {
 	EMA20         float64
 	EMA50         float64
-	ADX14         float64
-	ATR14         float64
+	ADX14          float64
+	ATR14          float64
 	NextResistance float64
 	NextSupport    float64
-	CurrentVolume float64
-	AverageVolume float64
-	MACDValues    []float64
-	RSI14Values   []float64
+	CurrentVolume  float64
+	AverageVolume  float64
+	MACDValues     []float64
+	RSI14Values    []float64
+	DonchianUpper20 float64 // 4H 20周期唐奇安通道上轨
+	DonchianLower20 float64 // 4H 20周期唐奇安通道下轨
 }
 
 // DailyData 日线数据
@@ -512,6 +514,38 @@ func calculateBollingerBands(klines []Kline, period int, numStdDev float64) (upp
 	return upper, lower
 }
 
+// calculateDonchianChannels 计算唐奇安通道
+func calculateDonchianChannels(klines []Kline, period int) (upper float64, lower float64) {
+	if len(klines) < period {
+		return 0, 0
+	}
+
+	// 获取最近 period 根K线
+	startIndex := len(klines) - period
+	if startIndex < 0 {
+		startIndex = 0
+	}
+	periodKlines := klines[startIndex:]
+
+	if len(periodKlines) == 0 {
+		return 0, 0
+	}
+
+	highestHigh := periodKlines[0].High
+	lowestLow := periodKlines[0].Low
+
+	for _, k := range periodKlines {
+		if k.High > highestHigh {
+			highestHigh = k.High
+		}
+		if k.Low < lowestLow {
+			lowestLow = k.Low
+		}
+	}
+
+	return highestHigh, lowestLow
+}
+
 // calculateADX 计算ADX (Average Directional Index)
 func calculateADX(klines []Kline, period int) float64 {
 	if len(klines) <= period {
@@ -619,19 +653,31 @@ func calculateADX(klines []Kline, period int) float64 {
 
 // calculateIntradaySeries 计算日内系列数据 (3m)
 func calculateIntradaySeries(klines []Kline) *IntradayData {
-	if len(klines) < 20 { // Bollinger Bands need at least 20 periods
-		return &IntradayData{}
+	data := &IntradayData{}
+	if len(klines) == 0 {
+		return data
+	}
+
+	// 使用已闭合的K线进行计算，排除当前正在形成的K线
+	closedKlines := klines
+	if len(klines) > 1 {
+		closedKlines = klines[:len(klines)-1]
+	} else {
+		// 如果只有一根K线，则没有闭合K线可用于计算
+		return data
+	}
+
+	if len(closedKlines) < 20 { // Bollinger Bands need at least 20 periods
+		return data
 	}
 
 	// Calculate 2.5 std dev Bollinger Bands
-	upperBB, lowerBB := calculateBollingerBands(klines, 20, 2.5)
+	upperBB, lowerBB := calculateBollingerBands(closedKlines, 20, 2.5)
 
-	data := &IntradayData{
-		CurrentEMA20: calculateEMA(klines, 20),
-		CurrentMACD:  calculateMACD(klines),
-		CurrentRSI7:  calculateRSI(klines, 7),
-		ATR14:        calculateATR(klines, 14),
-	}
+	data.CurrentEMA20 = calculateEMA(closedKlines, 20)
+	data.CurrentMACD = calculateMACD(closedKlines)
+	data.CurrentRSI7 = calculateRSI(closedKlines, 7)
+	data.ATR14 = calculateATR(closedKlines, 14)
 
 	if len(upperBB) > 0 && len(lowerBB) > 0 {
 		data.BBandsUpper_2_5 = upperBB[len(upperBB)-1]
@@ -644,15 +690,28 @@ func calculateIntradaySeries(klines []Kline) *IntradayData {
 // calculateFifteenMinSeries 计算15分钟序列数据
 func calculateFifteenMinSeries(klines []Kline) *FifteenMinData {
 	data := &FifteenMinData{}
-	if len(klines) < 26 { // MACD(12,26,9) 需要的最少数据
+	if len(klines) == 0 {
+		return data
+	}
+
+	// 使用已闭合的K线进行计算，排除当前正在形成的K线
+	closedKlines := klines
+	if len(klines) > 1 {
+		closedKlines = klines[:len(klines)-1]
+	} else {
+		// 如果只有一根K线，则没有闭合K线可用于计算
+		return data
+	}
+
+	if len(closedKlines) < 26 { // MACD(12,26,9) 需要的最少数据
 		return data
 	}
 
 	// RSI (14)
-	rsi14Series := calculateRSISeries(klines, 14)
+	rsi14Series := calculateRSISeries(closedKlines, 14)
 
 	// MACD (12, 26, 9)
-	macdLine, macdSignal := calculateMACDSeries(klines, 12, 26, 9)
+	macdLine, macdSignal := calculateMACDSeries(closedKlines, 12, 26, 9)
 
 	// 获取最近10个值
 	data.RSI14Values = getLastN(rsi14Series, 10)
@@ -664,41 +723,76 @@ func calculateFifteenMinSeries(klines []Kline) *FifteenMinData {
 
 // calculateOneHourContext 计算1小时数据
 func calculateOneHourContext(klines []Kline) *OneHourData {
+	data := &OneHourData{}
 	if len(klines) == 0 {
-		return &OneHourData{}
+		return data
 	}
+
+	// 使用已闭合的K线进行计算，排除当前正在形成的K线
+	closedKlines := klines
+	if len(klines) > 1 {
+		closedKlines = klines[:len(klines)-1]
+	} else {
+		// 如果只有一根K线，则没有闭合K线可用于计算
+		return data
+	}
+
 	return &OneHourData{
-		EMA20: calculateEMA(klines, 20),
-		EMA50: calculateEMA(klines, 50),
-		ATR14: calculateATR(klines, 14),
+		EMA20: calculateEMA(closedKlines, 20),
+		EMA50: calculateEMA(closedKlines, 50),
+		ATR14: calculateATR(closedKlines, 14),
 	}
 }
 
 // calculateFourHourContext 计算4小时数据
 func calculateFourHourContext(klines []Kline) *FourHourData {
+	data := &FourHourData{}
 	if len(klines) == 0 {
-		return &FourHourData{}
+		return data
 	}
 
-	support, resistance := calculateSupportResistance(klines, 20) // 使用最近20根K线计算支撑阻力
+	// 使用已闭合的K线进行计算，排除当前正在形成的K线
+	closedKlines := klines
+	if len(klines) > 1 {
+		closedKlines = klines[:len(klines)-1]
+	} else {
+		// 如果只有一根K线，则没有闭合K线可用于计算
+		return data
+	}
+
+	support, resistance := calculateSupportResistance(closedKlines, 20) // 使用最近20根K线计算支撑阻力
+	donchianUpper, donchianLower := calculateDonchianChannels(closedKlines, 20)
 
 	return &FourHourData{
-		EMA20:          calculateEMA(klines, 20),
-		EMA50:          calculateEMA(klines, 50),
-		ADX14:          calculateADX(klines, 14),
-		ATR14:          calculateATR(klines, 14),
+		EMA20:          calculateEMA(closedKlines, 20),
+		EMA50:          calculateEMA(closedKlines, 50),
+		ADX14:          calculateADX(closedKlines, 14),
+		ATR14:          calculateATR(closedKlines, 14),
 		NextSupport:    support,
 		NextResistance: resistance,
+		DonchianUpper20: donchianUpper,
+		DonchianLower20: donchianLower,
 	}
 }
 
 // calculateDailyContext 计算日线数据
 func calculateDailyContext(klines []Kline) *DailyData {
+	data := &DailyData{}
 	if len(klines) == 0 {
-		return &DailyData{}
+		return data
 	}
+
+	// 使用已闭合的K线进行计算，排除当前正在形成的K线
+	closedKlines := klines
+	if len(klines) > 1 {
+		closedKlines = klines[:len(klines)-1]
+	} else {
+		// 如果只有一根K线，则没有闭合K线可用于计算
+		return data
+	}
+
 	return &DailyData{
-		EMA50: calculateEMA(klines, 50),
+		EMA50: calculateEMA(closedKlines, 50),
 	}
 }
 
@@ -836,6 +930,8 @@ func Format(data *Data) string {
 		sb.WriteString(fmt.Sprintf("- **4H_ATR_14**: `%.4f`\n", data.FourHourContext.ATR14))
 		sb.WriteString(fmt.Sprintf("- **4H_Next_Support**: `%.4f`\n", data.FourHourContext.NextSupport))
 		sb.WriteString(fmt.Sprintf("- **4H_Next_Resistance**: `%.4f`\n", data.FourHourContext.NextResistance))
+		sb.WriteString(fmt.Sprintf("- **4H_Donchian_Upper_20**: `%.4f`\n", data.FourHourContext.DonchianUpper20))
+		sb.WriteString(fmt.Sprintf("- **4H_Donchian_Lower_20**: `%.4f`\n", data.FourHourContext.DonchianLower20))
 	}
 
 	// 1H Data
